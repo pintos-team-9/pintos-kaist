@@ -1,9 +1,12 @@
 FAIL
-Kernel panic in run: PANIC at ../../tests/threads/tests.c:60 in run_test(): no test named "mlfqs-block"
-Call stack: 0x80042131a2 0x8004216650 0x8004206636 0x8004206783 0x8004206120
+Kernel panic in run: PANIC at ../../threads/interrupt.c:361 in intr_handler(): Unexpected interrupt
+Call stack: 0x800421340f 0x80042089c7 0x8004208d79 0x8004210912 0x800420d188 0x800420681b 0x80042067dd 0x800420613d
 Translation of call stack:
-0x00000080042131a2: debug_panic (lib/kernel/debug.c:32)
-0x0000008004216650: run_test (tests/threads/tests.c:61)
-0x0000008004206636: run_task (threads/init.c:252)
-0x0000008004206783: run_actions (threads/init.c:297)
-0x0000008004206120: main (threads/init.c:125)
+0x000000800421340f: debug_panic (lib/kernel/debug.c:32)
+0x00000080042089c7: intr_handler (threads/interrupt.c:365)
+0x0000008004208d79: intr_entry (threads/intr-stubs.o:?)
+0x0000008004210912: printf (lib/stdio.c:80)
+0x000000800420d188: timer_print_stats (devices/timer.c:130)
+0x000000800420681b: print_stats (threads/init.c:356)
+0x00000080042067dd: power_off (threads/init.c:347)
+0x000000800420613d: main (threads/init.c:127)

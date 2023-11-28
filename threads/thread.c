@@ -63,6 +63,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -216,6 +217,23 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	/* Compare the priorities of the currently running thread and the newly inserted one.
+	Yield the CPU if the newly arriving thread has higher priority. */
+
+	// if (!list_empty(&ready_list)) {
+	// 	struct thread *currnet_thread = thread_current();
+	// 	struct list_elem *thread_elem = list_begin(&ready_list);
+	// 	struct thread *new_thread = list_entry(thread_elem, struct thread, elem);
+
+	// 	if (new_thread->priority > currnet_thread->priority) {
+	// 		thread_yield();
+	// 	}	
+	// }
+	if (&t->priority > thread_current()->priority) {
+		thread_yield();
+	}	
+
+
 	return tid;
 }
 
@@ -249,7 +267,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -323,7 +342,8 @@ thread_yield (void) {
 	// idle 스레드가 아니라면 현재 스레드를 준비 큐에 다시 넣는다. 
 	// 즉 실행중인 스레드를 준비큐에 넣어 다음에 스케줄리 될 수 있도록 한다.  
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		// list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 
 	// 현재 스레드를 준비 큐에 넣고 스케줄링을 수행한다.
 	do_schedule (THREAD_READY);
@@ -339,6 +359,15 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	// reorder the ready_list.
+	if (!list_empty(&ready_list)) {
+		struct list_elem *thread_elem = list_begin(&ready_list);
+		struct thread *new_thread = list_entry(thread_elem, struct thread, elem);
+
+		if (new_thread->priority > new_priority) {
+			thread_yield();
+		}	
+	}
 }
 
 /* Returns the current thread's priority. */
@@ -639,11 +668,21 @@ void thread_wake (int64_t ticks) {
 
 	while (thread_elem != list_tail(&sleep_list)) {
 		struct thread *now_thread = list_entry(thread_elem, struct thread, elem);
-		if (now_thread->wakeup_tick == ticks) {
+		if (now_thread->wakeup_tick <= ticks) {
 			thread_elem = list_remove(thread_elem);
 			thread_unblock(now_thread);
 		}
 		else
 			thread_elem = list_next(thread_elem);
 	}
+}
+
+static bool
+cmp_priority (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry(a_, struct thread, elem);
+  const struct thread *b = list_entry(b_, struct thread, elem);
+  
+  return a->priority > b->priority;
 }
