@@ -63,10 +63,9 @@ static void print_stats (void);
 
 
 int main (void) NO_RETURN;
-
+//커널 초기화
 /* Pintos main program. */
-int
-main (void) {
+int main (void) {
 	uint64_t mem_end;
 	char **argv;
 
@@ -79,7 +78,7 @@ main (void) {
 
 	/* Initialize ourselves as a thread so we can use locks,
 	   then enable console locking. */
-	thread_init ();
+	thread_init (); //스레드 초기화
 	console_init ();
 
 	/* Initialize memory system. */

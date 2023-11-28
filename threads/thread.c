@@ -27,7 +27,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-
+static struct list sleep_list;
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +108,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -587,4 +588,35 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+void thread_sleep(int64_t ticks){
+	enum intr_level old_level;
+	struct thread *now_thread = thread_current(); //현재스레드 가져옴
+	int64_t start = timer_ticks();
+	
+
+	old_level = intr_disable ();
+
+	if(now_thread != idle_thread){
+			now_thread->wake_tick = start + ticks;
+			
+			list_push_back (&sleep_list, &now_thread->elem);
+			thread_block();
+	}
+	intr_set_level (old_level);
+}
+
+void thread_wake(int64_t wake_tick){
+		struct list_elem *sleep_elem = list_begin(&sleep_list);
+		
+	while(sleep_elem != list_end(&sleep_list)){
+		struct thread *wake_thread = list_entry(sleep_elem, struct thread, elem);
+		if(wake_thread->wake_tick == wake_tick){
+			sleep_elem = list_remove(sleep_elem);
+			thread_unblock(wake_thread);
+		}
+		else
+			sleep_elem = list_next(sleep_elem);
+	}
 }

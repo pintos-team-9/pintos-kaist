@@ -82,19 +82,21 @@ timer_ticks (void) {
 
 /* Returns the number of timer ticks elapsed since THEN, which
    should be a value once returned by timer_ticks(). */
-int64_t
-timer_elapsed (int64_t then) {
+int64_t //경과시간
+timer_elapsed (int64_t then) { //then 이후 경과한 타이머 틱
 	return timer_ticks () - then;
 }
 
 /* Suspends execution for approximately TICKS timer ticks. */
+//어떤 조건이 충족될때까지 무한히 반복문을 실행함.
 void
-timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+timer_sleep (int64_t ticks) { //ticks 시간 동안 대기
+	int64_t start = timer_ticks (); //전체 경과한 시간(10)
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	//while (timer_elapsed (start) < ticks) // 현재까지 흐른 시간 < ticks
+	//		thread_yield (); //쓰레드에게 양보
+	thread_sleep(ticks);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +128,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	thread_wake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
