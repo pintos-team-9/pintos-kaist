@@ -64,7 +64,6 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-static bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -210,15 +209,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-	if(!list_empty(&ready_list)){
-		struct thread *now_thread = thread_current();
-		struct list_elem *ready_node = list_begin(&ready_list);
-		struct thread *first_thread = list_entry(ready_node, struct thread, elem);
-
-		if(first_thread->priority > now_thread->priority){
-			thread_yield();
-		}
-	}
+	thread_change_by_priority();
 
 	return tid;
 }
@@ -326,15 +317,19 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
-	if(!list_empty(&ready_list)){
-		struct list_elem *ready_node = list_begin(&ready_list);
-		struct thread *first_thread = list_entry(ready_node, struct thread, elem);
+	struct thread *now_thread = thread_current();
+	now_thread->origin_priority = new_priority;
+	//revert priority
+	now_thread->priority = now_thread->origin_priority;
 
-		if(first_thread->priority > new_priority){
-			thread_yield();
+	if(!list_empty(&now_thread->donations)){
+		struct list_elem *h_elem = list_max(&now_thread->donations, cmp_doner_priority, NULL);
+		struct thread *cmp_thread = list_entry(h_elem, struct thread, d_elem);
+		if(now_thread->priority < cmp_thread->priority){
+			now_thread->priority = cmp_thread->priority;
 		}
 	}
+	thread_change_by_priority();
 }
 
 /* Returns the current thread's priority. */
@@ -432,6 +427,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
+	t->origin_priority = priority;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -632,7 +631,7 @@ void thread_wake(int64_t ticks){
 
 	while(sleep_node != list_tail(&bedroom_list)){
 		struct thread *target_thread = list_entry(sleep_node, struct thread, elem);
-		if(target_thread->wake_tick == ticks){
+		if(target_thread->wake_tick <= ticks){
 			sleep_node = list_remove(sleep_node);
 			thread_unblock(target_thread);
 		} else{
@@ -643,7 +642,7 @@ void thread_wake(int64_t ticks){
 
 /* Returns false if priority A is less than priority B, true
    otherwise. */
-static bool
+bool
 cmp_priority (const struct list_elem *a_, const struct list_elem *b_,
             void *aux UNUSED) 
 {
@@ -651,4 +650,27 @@ cmp_priority (const struct list_elem *a_, const struct list_elem *b_,
   const struct thread *b = list_entry (b_, struct thread, elem);
   
   return a->priority > b->priority;
+}
+
+bool
+cmp_doner_priority (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, d_elem);
+  const struct thread *b = list_entry (b_, struct thread, d_elem);
+  
+  return a->priority > b->priority;
+}
+
+void
+thread_change_by_priority(void){
+	if(!list_empty(&ready_list)){
+		struct thread *now_thread = thread_current();
+		struct list_elem *ready_node = list_begin(&ready_list);
+		struct thread *first_thread = list_entry(ready_node, struct thread, elem);
+
+		if(first_thread->priority > now_thread->priority){
+			thread_yield();
+		}
+	}
 }

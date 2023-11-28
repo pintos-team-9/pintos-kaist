@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -109,6 +110,11 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 
 	int64_t wake_tick;	
+
+	struct lock *wait_on_lock;
+	struct list donations;
+	struct list_elem d_elem;
+	int origin_priority;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -148,4 +154,7 @@ void do_iret (struct intr_frame *tf);
 void thread_sleep(int64_t start, int64_t ticks);
 void thread_wake(int64_t ticks);
 
+bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+bool cmp_doner_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+void thread_change_by_priority(void);
 #endif /* threads/thread.h */
