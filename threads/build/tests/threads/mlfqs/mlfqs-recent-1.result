@@ -1,0 +1,12 @@
+FAIL
+Kernel panic in run: PANIC at ../../threads/thread.c:598 in thread_sleep(): assertion `now_thread == THREAD_RUNNING' failed.
+Call stack: 0x8004213361 0x80042078b0 0x800420d02f 0x800421a1b6 0x800421679d 0x8004206636 0x8004206783 0x8004206120
+Translation of call stack:
+0x0000008004213361: debug_panic (lib/kernel/debug.c:32)
+0x00000080042078b0: thread_sleep (threads/thread.c:600)
+0x000000800420d02f: timer_sleep (devices/timer.c:100)
+0x000000800421a1b6: test_mlfqs_recent_1 (tests/threads/mlfqs/mlfqs-recent-1.c:124 (discriminator 1))
+0x000000800421679d: run_test (tests/threads/tests.c:57)
+0x0000008004206636: run_task (threads/init.c:251)
+0x0000008004206783: run_actions (threads/init.c:296)
+0x0000008004206120: main (threads/init.c:124)

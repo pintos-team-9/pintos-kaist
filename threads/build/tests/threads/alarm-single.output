@@ -1,0 +1,16 @@
+Kernel command line: -q run alarm-single
+0 ~ 9fc00 1
+100000 ~ 13e0000 1
+Pintos booting with: 
+	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
+	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
+Calibrating timer...  157,081,600 loops/s.
+Boot complete.
+Executing 'alarm-single':
+(alarm-single) begin
+(alarm-single) Creating 5 threads to sleep 1 times each.
+(alarm-single) Thread 0 sleeps 10 ticks each time,
+(alarm-single) thread 1 sleeps 20 ticks each time, and so on.
+(alarm-single) If successful, product of iteration count and
+(alarm-single) sleep duration will appear in nondescending order.
+TIMEOUT
