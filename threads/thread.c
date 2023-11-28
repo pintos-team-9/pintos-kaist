@@ -64,6 +64,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -209,6 +210,15 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	if(!list_empty(&ready_list)){
+		struct thread *now_thread = thread_current();
+		struct list_elem *ready_node = list_begin(&ready_list);
+		struct thread *first_thread = list_entry(ready_node, struct thread, elem);
+
+		if(first_thread->priority > now_thread->priority){
+			thread_yield();
+		}
+	}
 
 	return tid;
 }
@@ -243,7 +253,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	//list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -306,7 +317,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		//list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -315,6 +327,14 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	if(!list_empty(&ready_list)){
+		struct list_elem *ready_node = list_begin(&ready_list);
+		struct thread *first_thread = list_entry(ready_node, struct thread, elem);
+
+		if(first_thread->priority > new_priority){
+			thread_yield();
+		}
+	}
 }
 
 /* Returns the current thread's priority. */
@@ -619,4 +639,16 @@ void thread_wake(int64_t ticks){
 			sleep_node = list_next(sleep_node);
 		}
 	}
+}
+
+/* Returns false if priority A is less than priority B, true
+   otherwise. */
+static bool
+cmp_priority (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, elem);
+  const struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->priority > b->priority;
 }
