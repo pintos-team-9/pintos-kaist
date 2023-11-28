@@ -28,6 +28,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list sleep_list;
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +109,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -182,10 +184,12 @@ thread_create (const char *name, int priority,
 	struct thread *t;
 	tid_t tid;
 
+	// function을 정상적으로 받았는지 확인
 	ASSERT (function != NULL);
 
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
+	// 할당 받은게 없으면 에러
 	if (t == NULL)
 		return TID_ERROR;
 
@@ -198,10 +202,15 @@ thread_create (const char *name, int priority,
 	t->tf.rip = (uintptr_t) kernel_thread;
 	t->tf.R.rdi = (uint64_t) function;
 	t->tf.R.rsi = (uint64_t) aux;
+	
+	// SEL_KCSEG : 커널 코드 셀렉터 ( 0x08 )
+	// SEL_KDSEG : 커널 데이터 셀렉터 ( 0x10 )
 	t->tf.ds = SEL_KDSEG;
 	t->tf.es = SEL_KDSEG;
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
+
+	// FLAG_IF : 1 << 9 ( 0x200 )
 	t->tf.eflags = FLAG_IF;
 
 	/* Add to run queue. */
@@ -294,18 +303,36 @@ thread_exit (void) {
 
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
+// 현재 실행 중인 스레드를 CPU에서 양보하고 현재 스레드를 스케줄러에 다시 예약할수 있도록 한다.
 void
 thread_yield (void) {
+	//현재 실행중인 스레드에 대한 포인터
 	struct thread *curr = thread_current ();
+	
+	// 인터럽트 레벨을 저장할 변수
 	enum intr_level old_level;
 
+	// 이게 지금 인터럽트 컨텍스트에서 실행되었나? 
+	// 인터럽트 컨텍스트에서는 스레드를 양보하거나 대기시키는것은 안전하지 않다
+	// 외부 인터럽트 처리중이면 true를 반환한다. 즉 외부 인터럽트 처리중이면 통과할수 없다.
 	ASSERT (!intr_context ());
 
+	// 현재 인터럽트를 비활성화 하고 그 이전의 인터럽트 레벨을 저장
 	old_level = intr_disable ();
+
+	// idle 스레드가 아니라면 현재 스레드를 준비 큐에 다시 넣는다. 
+	// 즉 실행중인 스레드를 준비큐에 넣어 다음에 스케줄리 될 수 있도록 한다.  
 	if (curr != idle_thread)
 		list_push_back (&ready_list, &curr->elem);
+
+	// 현재 스레드를 준비 큐에 넣고 스케줄링을 수행한다.
 	do_schedule (THREAD_READY);
+
+	// 인터럽트 레벨로 복원한다.
 	intr_set_level (old_level);
+
+// 현재 실행 중인 스레드를 양보하고 만약 idle스레드가 아니라면 해당 스레드를 준비큐에 넣어
+// 다른스레드가 CPU를 사용할수 있도록 한다.
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -587,4 +614,36 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+void thread_sleep (int64_t ticks) {
+	enum intr_level old_level;
+	struct thread *now_thread = thread_current();
+	int64_t start = timer_ticks ();
+
+	// ASSERT(now_thread->status == THREAD_RUNNING);
+
+	old_level = intr_disable ();
+
+	if (now_thread != idle_thread) {
+		now_thread->wakeup_tick = start + ticks;
+		list_push_back (&sleep_list, &now_thread->elem);
+		thread_block();
+	}
+
+	intr_set_level (old_level);
+}
+
+void thread_wake (int64_t ticks) {
+	struct list_elem *thread_elem = list_begin(&sleep_list);
+
+	while (thread_elem != list_tail(&sleep_list)) {
+		struct thread *now_thread = list_entry(thread_elem, struct thread, elem);
+		if (now_thread->wakeup_tick == ticks) {
+			thread_elem = list_remove(thread_elem);
+			thread_unblock(now_thread);
+		}
+		else
+			thread_elem = list_next(thread_elem);
+	}
 }

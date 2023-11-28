@@ -28,6 +28,7 @@ test_alarm_priority (void)
     {
       int priority = PRI_DEFAULT - (i + 5) % 10 - 1;
       char name[16];
+      // name 버퍼에 최대 16의 크기만큼 "priority %d"를 저장
       snprintf (name, sizeof name, "priority %d", priority);
       thread_create (name, priority, alarm_priority_thread, NULL);
     }
