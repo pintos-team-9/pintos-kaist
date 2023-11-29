@@ -28,6 +28,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list bedroom_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +110,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&bedroom_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -206,6 +209,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	thread_change_by_priority();
 
 	return tid;
 }
@@ -240,7 +244,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	//list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -303,7 +308,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		//list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -311,7 +317,19 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	struct thread *now_thread = thread_current();
+	now_thread->origin_priority = new_priority;
+	//revert priority
+	now_thread->priority = now_thread->origin_priority;
+
+	if(!list_empty(&now_thread->donations)){
+		struct list_elem *h_elem = list_max(&now_thread->donations, cmp_doner_priority, NULL);
+		struct thread *cmp_thread = list_entry(h_elem, struct thread, d_elem);
+		if(now_thread->priority < cmp_thread->priority){
+			now_thread->priority = cmp_thread->priority;
+		}
+	}
+	thread_change_by_priority();
 }
 
 /* Returns the current thread's priority. */
@@ -409,6 +427,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
+	t->origin_priority = priority;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -587,4 +609,68 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+void thread_sleep(int64_t start, int64_t ticks){
+	struct thread *now_thread;
+	enum intr_level old_level;
+	now_thread = thread_current();
+	//set expire tick
+	old_level = intr_disable ();
+	if(now_thread != idle_thread){
+		now_thread->wake_tick = start+ticks;
+		list_push_back(&bedroom_list, &now_thread->elem);
+		thread_block();	
+
+	}
+	intr_set_level(old_level);
+}
+
+void thread_wake(int64_t ticks){
+	struct list_elem *sleep_node = list_begin(&bedroom_list);
+
+	while(sleep_node != list_tail(&bedroom_list)){
+		struct thread *target_thread = list_entry(sleep_node, struct thread, elem);
+		if(target_thread->wake_tick <= ticks){
+			sleep_node = list_remove(sleep_node);
+			thread_unblock(target_thread);
+		} else{
+			sleep_node = list_next(sleep_node);
+		}
+	}
+}
+
+/* Returns false if priority A is less than priority B, true
+   otherwise. */
+bool
+cmp_priority (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+	struct thread *a = list_entry (a_, struct thread, elem);
+  	struct thread *b = list_entry (b_, struct thread, elem);
+  
+  	return a->priority > b->priority;
+}
+
+bool
+cmp_doner_priority (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, d_elem);
+  const struct thread *b = list_entry (b_, struct thread, d_elem);
+  
+  return a->priority > b->priority;
+}
+
+void
+thread_change_by_priority(void){
+	if(!list_empty(&ready_list)){
+		struct thread *now_thread = thread_current();
+		struct list_elem *ready_node = list_begin(&ready_list);
+		struct thread *first_thread = list_entry(ready_node, struct thread, elem);
+
+		if(first_thread->priority > now_thread->priority){
+			thread_yield();
+		}
+	}
 }
