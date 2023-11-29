@@ -29,6 +29,9 @@
 static struct list ready_list;
 
 static struct list sleep_list;
+
+static struct list donate_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -63,7 +66,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-static bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -110,7 +113,11 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	// alarm clock
 	list_init (&sleep_list);
+	
+	// priority donation
+	list_init (&donate_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -229,9 +236,10 @@ thread_create (const char *name, int priority,
 	// 		thread_yield();
 	// 	}	
 	// }
-	if (&t->priority > thread_current()->priority) {
-		thread_yield();
-	}	
+	preempt();
+	// if (&t->priority > thread_current()->priority) {
+	// 	thread_yield();
+	// }	
 
 
 	return tid;
@@ -333,7 +341,7 @@ thread_yield (void) {
 
 	// 이게 지금 인터럽트 컨텍스트에서 실행되었나? 
 	// 인터럽트 컨텍스트에서는 스레드를 양보하거나 대기시키는것은 안전하지 않다
-	// 외부 인터럽트 처리중이면 true를 반환한다. 즉 외부 인터럽트 처리중이면 통과할수 없다.
+	// 외부 인터럽트 처리중이면 true를 반환한다.
 	ASSERT (!intr_context ());
 
 	// 현재 인터럽트를 비활성화 하고 그 이전의 인터럽트 레벨을 저장
@@ -360,19 +368,18 @@ void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
 	// reorder the ready_list.
-	if (!list_empty(&ready_list)) {
-		struct list_elem *thread_elem = list_begin(&ready_list);
-		struct thread *new_thread = list_entry(thread_elem, struct thread, elem);
-
-		if (new_thread->priority > new_priority) {
-			thread_yield();
-		}	
-	}
+	preempt();
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) {
+	// In the presence of priority donation, returns the higher (donated) priority.
+	if (!list_empty(&donate_list)) {
+		struct list_elem *tmp_elem = list_begin(&donate_list);
+		struct thread *tmp_thread = list_entry(tmp_elem, struct thread, elem);
+		return tmp_thread->d_elem;
+	}
 	return thread_current ()->priority;
 }
 
@@ -671,18 +678,27 @@ void thread_wake (int64_t ticks) {
 		if (now_thread->wakeup_tick <= ticks) {
 			thread_elem = list_remove(thread_elem);
 			thread_unblock(now_thread);
+
 		}
 		else
 			thread_elem = list_next(thread_elem);
 	}
 }
 
-static bool
-cmp_priority (const struct list_elem *a_, const struct list_elem *b_,
-            void *aux UNUSED) 
-{
+bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED) {
   const struct thread *a = list_entry(a_, struct thread, elem);
   const struct thread *b = list_entry(b_, struct thread, elem);
   
   return a->priority > b->priority;
+}
+
+void preempt(void) {
+	if (!list_empty(&ready_list)) {
+		struct list_elem *elem_first = list_begin(&ready_list);
+		struct thread *thread_first = list_entry(elem_first, struct thread, elem);
+
+		if (thread_first->priority > thread_current()->priority) {
+			thread_yield();
+		}	
+	}
 }

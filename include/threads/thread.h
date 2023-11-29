@@ -109,6 +109,9 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 
 	int64_t wakeup_tick;
+
+	bool wait_on_lock;
+	int d_elem;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -148,6 +151,8 @@ void do_iret (struct intr_frame *tf);
 void thread_sleep (int64_t ticks);
 void thread_wake (int64_t ticks);
 
-static bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+
+void preempt(void);
 
 #endif /* threads/thread.h */
