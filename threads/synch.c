@@ -375,7 +375,7 @@ cmp_sema(const struct list_elem *a_, const struct list_elem *b_,
 void
 donate_priority(void){
 	struct thread *now_thread = thread_current();
-	int cnt = 8;
+	int cnt = DONATE_DEPTH;
 	while(1){
 		if(cnt <= 0 || now_thread->wait_on_lock == NULL){
 			break;
