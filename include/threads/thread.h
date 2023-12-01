@@ -107,7 +107,12 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
 	int64_t wake_tick;
+	struct list donations;//기부 리스트
+	struct list_elem d_elem;// 도네이션 리스트 elem
+	struct lock *wait_on_lock; // 스레드가 대기하고 있는 lock의 주소 저장
+	int origin_priority; //초기 우선순위 값
 };
 
 /* If false (default), use round-robin scheduler.
@@ -148,4 +153,9 @@ void thread_wake(int64_t wake_tick);
 bool cmp_priority(const struct list_elem *a_, const struct list_elem *b_,
             void *aux UNUSED);
 void preempt();
+void donate_priority();
+void remove_with_lock(struct lock *lock);
+void refresh_priority();
+bool cmp_donation_priority(const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED);
 #endif /* threads/thread.h */

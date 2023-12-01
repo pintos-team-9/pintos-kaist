@@ -28,6 +28,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 static struct list sleep_list;
+static struct list donations;
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -36,6 +37,7 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+static struct lock wait_on_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
@@ -318,7 +320,9 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->origin_priority = new_priority;
+	thread_current()->priority = thread_current()->origin_priority;
+	refresh_priority();
 	
 	if(!list_empty(&ready_list)){
 		struct list_elem *elem = list_begin(&ready_list);
@@ -424,6 +428,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	list_init(&t->donations);
+	t->origin_priority = priority;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -654,4 +660,64 @@ void preempt(){
 			thread_yield();
 		}
 	}
+}
+
+void donate_priority(){
+	struct lock *wait_lock = thread_current()->wait_on_lock; //현재 스레드가 기다리고 있는 락
+	//struct thread *now_thread = thread_current();
+	int cnt = 8;
+	
+	while(1){
+		if(cnt=0 ||  wait_lock == NULL){
+			break;
+		}	
+		struct thread *holder = wait_lock->holder;
+		holder->priority = thread_current()->priority;
+		wait_lock = holder->wait_on_lock;
+
+		cnt--;
+	}
+}
+
+void remove_with_lock(struct lock *lock){ // 현재 스레드가 호출했으니까 -> 
+	struct list donation_list = thread_current()->donations;
+	struct list_elem *done_elem = list_begin(&donation_list);
+	
+	if(list_empty(&donation_list)){
+		return;
+	}
+
+
+	struct list_elem * e;
+	for (e = list_begin (&thread_current()->donations); e != list_end (&thread_current()->donations); e = list_next (e)){
+
+		struct thread *temp = list_entry (e, struct thread, d_elem);
+		if (temp->wait_on_lock == lock)
+			list_remove (&temp->d_elem);
+	}
+	
+}
+
+void refresh_priority(){
+	struct thread *now_thread = thread_current();
+	
+	if(!list_empty(&now_thread->donations)){
+		struct thread *max_thread = list_entry(list_max(&now_thread->donations, cmp_donation_priority, NULL), struct thread, d_elem);
+		now_thread->priority = max_thread->priority;
+		if( now_thread->priority < now_thread->origin_priority)
+			now_thread->priority = now_thread->origin_priority;
+	}
+	else{
+		now_thread->priority = now_thread->origin_priority;
+	}
+
+}
+
+bool cmp_donation_priority(const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED){
+		struct thread *a_thread = list_entry(a_, struct thread, d_elem); //요소에 대응하는 스레드를 갖고옴
+		struct thread *b_thread = list_entry(b_, struct thread, d_elem);
+
+		return a_thread->priority > b_thread->priority;
+
 }
