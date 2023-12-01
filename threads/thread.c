@@ -30,7 +30,7 @@ static struct list ready_list;
 
 static struct list sleep_list;
 
-static struct list donate_list;
+static struct list donations;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -40,6 +40,8 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+
+static struct lock wait_on_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
@@ -67,6 +69,8 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+void preempt(void);
+void refresh_priority(void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -117,7 +121,6 @@ thread_init (void) {
 	list_init (&sleep_list);
 	
 	// priority donation
-	list_init (&donate_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -366,8 +369,10 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->original_priority = new_priority;\
+
 	// reorder the ready_list.
+	refresh_priority();
 	preempt();
 }
 
@@ -375,11 +380,7 @@ thread_set_priority (int new_priority) {
 int
 thread_get_priority (void) {
 	// In the presence of priority donation, returns the higher (donated) priority.
-	if (!list_empty(&donate_list)) {
-		struct list_elem *tmp_elem = list_begin(&donate_list);
-		struct thread *tmp_thread = list_entry(tmp_elem, struct thread, elem);
-		return tmp_thread->d_elem;
-	}
+
 	return thread_current ()->priority;
 }
 
@@ -472,6 +473,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
+	t->original_priority = priority;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -700,5 +705,60 @@ void preempt(void) {
 		if (thread_first->priority > thread_current()->priority) {
 			thread_yield();
 		}	
+	}
+}
+bool cmp_donate_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED) {
+  const struct thread *a = list_entry(a_, struct thread, d_elem);
+  const struct thread *b = list_entry(b_, struct thread, d_elem);
+  
+  return a->priority > b->priority;
+}
+
+void donate_priority(void) {
+	struct thread *donate_thread = thread_current();
+	int cnt = 0;
+	while (donate_thread->wait_on_lock != NULL && cnt < 8) {
+		
+		donate_thread->wait_on_lock->holder->priority = donate_thread->priority;
+		
+		donate_thread = donate_thread->wait_on_lock->holder;
+		
+		cnt++;
+	}
+}
+
+void remove_with_lock(struct lock *lock) {
+	struct list *donate_list = &lock->holder->donations;
+	struct list_elem *removed_elem = list_begin(&donate_list);
+
+	struct list_elem *e;
+	for (e = list_begin(&thread_current()->donations) ; e != list_end(&thread_current()->donations) ; e = list_next(e) ) {
+		struct thread *donor = list_entry(e, struct thread, d_elem);
+		if (donor->wait_on_lock == lock) {
+			list_remove(&donor->d_elem);
+		}
+	}
+	// while (removed_elem != list_end(&donate_list)) {
+	// 	struct thread *now_thread = list_entry(removed_elem, struct thread, elem);
+	// 	if (lock == now_thread->wait_on_lock) {
+	// 		removed_elem = list_remove(removed_elem);
+	// 	}
+	// 	else {
+	// 		removed_elem = list_next(removed_elem);
+	// 	}
+	// }
+}
+
+void refresh_priority(void) {
+	struct thread *now_thread = thread_current();
+	now_thread->priority = now_thread->original_priority;
+
+	if (!list_empty(&now_thread->donations)) {
+		struct list_elem *now_elem = list_max(&now_thread->donations, cmp_donate_priority, NULL);
+		struct thread *max_thread = list_entry(now_elem, struct thread, d_elem);
+
+		if (now_thread->priority < max_thread->priority) {
+			now_thread->priority = max_thread->priority;
+		}
 	}
 }

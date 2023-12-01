@@ -110,8 +110,10 @@ struct thread {
 
 	int64_t wakeup_tick;
 
-	bool wait_on_lock;
-	int d_elem;
+	int original_priority;	// 초기 우선순위 값 저장용 필드
+	struct lock *wait_on_lock;	// 대기중인 lock 자료구조 필드
+	struct list donations;	// donation들을 저장할 리스트
+	struct list_elem d_elem;	// donations에 들어갈 element
 };
 
 /* If false (default), use round-robin scheduler.
@@ -154,5 +156,11 @@ void thread_wake (int64_t ticks);
 bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
 void preempt(void);
+
+bool cmp_donate_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+
+void donate_priority(void);
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
 
 #endif /* threads/thread.h */
