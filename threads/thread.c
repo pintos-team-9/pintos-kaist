@@ -728,23 +728,21 @@ void donate_priority(void) {
 }
 
 void remove_with_lock(struct lock *lock) {
-	struct list *donate_list = &lock->holder->donations;
-	struct list_elem *removed_elem = list_begin(&donate_list);
+	struct list_elem *removed_elem = list_begin(&thread_current()->donations);
 
-	struct list_elem *e;
-	for (e = list_begin(&thread_current()->donations) ; e != list_end(&thread_current()->donations) ; e = list_next(e) ) {
-		struct thread *donor = list_entry(e, struct thread, d_elem);
+	while (removed_elem != list_end(&thread_current()->donations)) {
+		struct thread *donor = list_entry(removed_elem, struct thread, d_elem);
 		if (donor->wait_on_lock == lock) {
 			list_remove(&donor->d_elem);
 		}
+		removed_elem = list_next(removed_elem);
+		
 	}
-	// while (removed_elem != list_end(&donate_list)) {
-	// 	struct thread *now_thread = list_entry(removed_elem, struct thread, elem);
-	// 	if (lock == now_thread->wait_on_lock) {
-	// 		removed_elem = list_remove(removed_elem);
-	// 	}
-	// 	else {
-	// 		removed_elem = list_next(removed_elem);
+	// struct list_elem *e;
+	// for (e = list_begin(&thread_current()->donations) ; e != list_end(&thread_current()->donations) ; e = list_next(e) ) {
+	// 	struct thread *donor = list_entry(e, struct thread, d_elem);
+	// 	if (donor->wait_on_lock == lock) {
+	// 		list_remove(&donor->d_elem);
 	// 	}
 	// }
 }
