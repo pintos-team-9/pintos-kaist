@@ -113,6 +113,10 @@ struct thread {
 	struct list_elem d_elem;// 도네이션 리스트 elem
 	struct lock *wait_on_lock; // 스레드가 대기하고 있는 lock의 주소 저장
 	int origin_priority; //초기 우선순위 값
+
+	//mlfqs
+	int nice;
+	int recent_cpu; //최근에 얼마나 cpu 시간을 썼는지
 };
 
 /* If false (default), use round-robin scheduler.
@@ -158,4 +162,12 @@ void remove_with_lock(struct lock *lock);
 void refresh_priority();
 bool cmp_donation_priority(const struct list_elem *a_, const struct list_elem *b_,
             void *aux UNUSED);
+
+void mlfqs_priority(struct thread *t);
+void mlfqs_recent_cpu(struct thread *t);
+void mlfqs_load_avg();
+void mlfqs_increment();
+void mlfqs_recalc_recentcpu();
+void mlfqs_recalc_priority();
+void mlfqs_recalc_load_avg();
 #endif /* threads/thread.h */

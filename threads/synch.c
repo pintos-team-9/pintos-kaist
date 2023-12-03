@@ -67,10 +67,10 @@ sema_down (struct semaphore *sema) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	while (sema->value == 0) {
+	while (sema->value == 0) { //세마값이 0이면 sema_waiter리스트로 보냄
 		//list_push_back (&sema->waiters, &thread_current ()->elem);
 		list_insert_ordered(&sema->waiters, &thread_current()->elem, cmp_priority, NULL);
-		thread_block ();
+		thread_block (); //block 시켜쥼
 	}
 	sema->value--;
 	intr_set_level (old_level);
@@ -117,8 +117,9 @@ sema_up (struct semaphore *sema) {
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
 	}
+	//unblock 한 후 sema_waiter 리스트에 있던 쓰레드를 대기리스트로!
 	sema->value++;
-	preempt();
+	preempt(); //우선 순위 비교
 	intr_set_level (old_level);
 }
 
@@ -194,12 +195,14 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-
-	if(lock->holder){
-		thread_current()->wait_on_lock = lock; //b가 기다리고 있는게 lock
-		list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, cmp_donation_priority, NULL);
-		donate_priority();
+	if(!thread_mlfqs){
+		if(lock->holder){ //lock 가진 스레드가 있으면
+			thread_current()->wait_on_lock = lock; //lock은 현재쓰레드가 기다리고 있는 lock
+			list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, cmp_donation_priority, NULL);
+			donate_priority();
+		}
 	}
+
 	sema_down (&lock->semaphore);
 	thread_current()->wait_on_lock = NULL;
 	lock->holder = thread_current ();
@@ -235,9 +238,10 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	remove_with_lock(lock);
-	refresh_priority();
-
+	if(!thread_mlfqs){
+		remove_with_lock(lock);
+		refresh_priority();
+	}
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }

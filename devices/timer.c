@@ -41,7 +41,6 @@ timer_init (void) {
 	outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
 	outb (0x40, count & 0xff);
 	outb (0x40, count >> 8);
-
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
@@ -126,8 +125,19 @@ timer_print_stats (void) {
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
+	
 	ticks++;
 	thread_tick ();
+	if(thread_mlfqs){
+		mlfqs_increment(); //recent cpu 1 증가
+		if(timer_ticks() % TIMER_FREQ == 0){ //1초마다
+			mlfqs_load_avg();
+			mlfqs_recalc_recentcpu();
+		}
+		if(timer_ticks() % 4 == 0){ //4tick 마다
+			mlfqs_recalc_priority();
+		}
+	}
 	thread_wake(ticks);
 }
 
