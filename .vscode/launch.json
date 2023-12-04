@@ -7,7 +7,7 @@
         "executable": "/home/ubuntu/pintos-kaist/threads/build/kernel.o",
         "target": "localhost:1234",
         "remote": true,
-        "cwd": "/home/ubuntu/pintos-kaist/threads/build",
+        "cwd": "/home/ubuntu/pintos-kaist/",
         "valuesFormatting": "parseText"
       }
     ]

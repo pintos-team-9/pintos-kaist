@@ -115,6 +115,9 @@ struct thread {
 	struct list donations;
 	struct list_elem d_elem;
 	int origin_priority;
+
+	int nice;
+	int recent_cpu;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -155,6 +158,15 @@ void thread_sleep(int64_t start, int64_t ticks);
 void thread_wake(int64_t ticks);
 
 bool cmp_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+bool cmp_wake_ticks (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 bool cmp_doner_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 void thread_change_by_priority(void);
+
+//MLFQS
+void mlfqs_priority(struct thread *t);
+void mlfqs_recent_cpu(struct thread *t);
+void mlfqs_load_avg(void);
+void mlfqs_increment(void);
+void mlfqs_recalc_priority(void);
+void mlfqs_recalc_recent_cpu(void);
 #endif /* threads/thread.h */
