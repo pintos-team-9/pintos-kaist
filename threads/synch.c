@@ -32,6 +32,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+
 static bool cmp_sem_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
@@ -196,11 +197,13 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	if (lock->holder) {
-		// 락 안에 있는 세마포어 안에 있는 웨이터 리스트 안에 있는 스레드
-		thread_current()->wait_on_lock = lock;
-		list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, cmp_donate_priority, NULL);
-		donate_priority();
+	if (!thread_mlfqs) {
+		if (lock->holder) {
+			// 락 안에 있는 세마포어 안에 있는 웨이터 리스트 안에 있는 스레드
+			thread_current()->wait_on_lock = lock;
+			list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, cmp_donate_priority, NULL);
+			donate_priority();
+		}
 	}
 
 	sema_down (&lock->semaphore);
@@ -239,11 +242,13 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-
-	remove_with_lock(lock);
-	refresh_priority();
-
+	
 	lock->holder = NULL;
+
+	if (!thread_mlfqs) {
+		remove_with_lock(lock);
+		refresh_priority();
+	}
 
 	sema_up (&lock->semaphore);
 }

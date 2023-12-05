@@ -92,7 +92,7 @@ timer_elapsed (int64_t then) {
 void
 timer_sleep (int64_t ticks) {
 	// 현재 타이머 값 기록
-	int64_t start = timer_ticks ();
+	// int64_t start = timer_ticks ();
 
 	// 인터럽트가 켜져 있는지 확인
 	ASSERT (intr_get_level () == INTR_ON);
@@ -134,6 +134,21 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	if (thread_mlfqs) {
+		mlfqs_increment();
+
+		if (ticks % 4 == 0) {
+	
+			if (ticks % TIMER_FREQ == 0) {
+				mlfqs_load_avg();
+				mlfqs_recalc_recent_cpu();
+				mlfqs_recalc_priority();
+			}
+			mlfqs_priority(thread_current());
+		}
+		// preempt();
+	}
 
 	thread_wake(ticks);
 }

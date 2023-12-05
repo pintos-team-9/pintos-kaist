@@ -114,6 +114,9 @@ struct thread {
 	struct lock *wait_on_lock;	// 대기중인 lock 자료구조 필드
 	struct list donations;	// donation들을 저장할 리스트
 	struct list_elem d_elem;	// donations에 들어갈 element
+
+	int nice;
+	int recent_cpu;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -162,5 +165,12 @@ bool cmp_donate_priority (const struct list_elem *a_, const struct list_elem *b_
 void donate_priority(void);
 void remove_with_lock(struct lock *lock);
 void refresh_priority(void);
+
+void mlfqs_priority (struct thread *t);
+void mlfqs_recent_cpu (struct thread *t);
+void mlfqs_load_avg (void);
+void mlfqs_increment (void);
+void mlfqs_recalc_recent_cpu (void);
+void mlfqs_recalc_priority (void);
 
 #endif /* threads/thread.h */
