@@ -178,7 +178,7 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
-
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -204,6 +204,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	int cnt = 99999999;
+	while(cnt--);
 	return -1;
 }
 
@@ -328,7 +330,16 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	char *argv[LOADER_ARGS_LEN / 2 + 1];
+	int argc = 0;
 
+	//file_name : /foo -a -b -c
+	//parsing하기
+	char *token, *save_ptr;
+	for(token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
+		argv[argc] = token;
+		argc++;
+	}
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -416,6 +427,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	argument_stack(argv, argc, if_);
 
 	success = true;
 
@@ -425,6 +437,37 @@ done:
 	return success;
 }
 
+void argument_stack(char **argv, int argc, struct intr_frame *if_){
+	void *address_arr[LOADER_ARGS_LEN / 2 + 1];
+
+	for(int i=argc-1; i>=0; i--){
+		int arg_len = strlen(argv[i])+1; //i번쨰 길이를 가져옴 \0까지 글자가 하나라도 두개임
+		if_->rsp -= arg_len; //스택포인터 낮춤
+		memcpy(if_->rsp, argv[i], arg_len);
+		address_arr[i] = (void *)if_->rsp;
+	}
+	
+	int padding = if_->rsp % 8;
+
+	if(padding != 0){ //word align
+		if_->rsp -= padding;
+		memset(if_->rsp, 0, padding);
+	}
+	//sentinal 
+	if_->rsp -= 8;
+	memset(if_->rsp, 0, 8);
+	
+	for(int i=argc-1; i>=0; i--){
+		if_->rsp -= 8;
+		memcpy(if_->rsp, &address_arr[i], 8);
+	}
+
+	if_->R.rsi = if_->rsp;
+	if_->R.rdi = argc;
+	
+	if_->rsp -= 8;
+	memset(if_->rsp, 0, 8);
+}
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
