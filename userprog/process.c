@@ -37,7 +37,7 @@ process_init (void) {
  * The new thread may be scheduled (and may even exit)
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
- * Notice that THIS SHOULD BE CALLED ONCE. */
+ * Notice that THIS SHOULD BE CALLED ONCE. */ //process_excute
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
@@ -159,7 +159,7 @@ error:
 }
 
 /* Switch the current execution context to the f_name.
- * Returns -1 on fail. */
+ * Returns -1 on fail. */ //start_process
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
@@ -177,17 +177,74 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
+	static char *argv[LOADER_ARGS_LEN / 2 + 1];
+	char *token, *save_ptr;
+	int argc = 0;
+
+	/*let's parsing*/
+	//char *strtok_r(char *s, const char *delimiters, char **saveptr);
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr)){
+		argv[argc] = token;
+		argc++;
+	}
+
 	success = load (file_name, &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
+	if (!success){
 		return -1;
+	}
+
+	//void argument_stack(char **parse ,int count ,struct intr_frame *if) struct intr_frame로 변경
+	argument_stack(argv, argc, &_if);
+
+	hex_dump(_if.rsp , _if.rsp, (USER_STACK-_if.rsp), true);
+	
+	palloc_free_page (file_name);
 
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
+
+void argument_stack(char **parse ,int count ,struct intr_frame *_if){
+	void *arg_addr[LOADER_ARGS_LEN / 2 + 1]; //tmp store phys_addr
+	
+	//stack -> 선 감소, 후 삽입
+	//string
+	for(int i = count-1; i >= 0; i--){ //argv[0][...] ~ argv[(count-1)][...]
+		int arg_len = strlen(parse[i]) + 1; // within '\0'
+		_if->rsp -= arg_len;
+		memcpy(_if->rsp, parse[i], arg_len);
+		arg_addr[i] = (void *)_if->rsp;
+	}
+
+	//word-align (1byte)
+	int zero_padding = _if->rsp % 8;
+	if(zero_padding != 0){
+		_if->rsp -= zero_padding;
+		memset(_if->rsp, 0, zero_padding);
+	}
+	
+	//sentinel '\0'
+	_if->rsp -= 8;
+	memset(_if->rsp, 0, 8);
+
+	//phys_addr(addr size 8)
+	for(int i = count-1; i >= 0; i--){
+		_if->rsp -= 8;
+		memcpy(_if->rsp, &arg_addr[i], 8);
+	}
+
+	//main(argc, argv)
+	_if->R.rdi = count;
+	_if->R.rsi = _if->rsp; //addr_start
+
+	//return addr(fake address)
+	_if->rsp -=8;
+	memset(_if->rsp, 0, 8);
+}
+
 
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -204,6 +261,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	int cnt = 9999990;
+	while(cnt > 0)
+		cnt--;
 	return -1;
 }
 

@@ -1,6 +1,8 @@
 {
     "C_Cpp.default.compilerPath": "",
     "files.associations": {
-        "thread.h": "c"
+        "thread.h": "c",
+        "stddef.h": "c",
+        "stdint.h": "c"
     }
 }
