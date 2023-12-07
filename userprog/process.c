@@ -26,6 +26,8 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+static void start_process (void *file_name_);
+// static void thread_exit (void);
 
 /* General process initializer for initd and other process. */
 static void
@@ -92,21 +94,29 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if (is_kern_pte(pte))
+		return;
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	palloc_get_page(PAL_USER);
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy(newpage, parent_page, va);
+	writable = is_writable(current->pml4);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
+
 		/* 6. TODO: if fail to insert page, do error handling. */
+		palloc_free_page(newpage);
+		return false;
 	}
 	return true;
 }
@@ -121,7 +131,9 @@ __do_fork (void *aux) {
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
+
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
+
 	struct intr_frame *parent_if;
 	bool succ = true;
 
@@ -178,6 +190,7 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -204,6 +217,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while (true) {		
+	}
 	return -1;
 }
 
@@ -215,6 +230,10 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	uint64_t *pd;
+
+	palloc_free_page(curr->pml4);
+	pd = curr->pml4;
 
 	process_cleanup ();
 }
@@ -327,7 +346,17 @@ load (const char *file_name, struct intr_frame *if_) {
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
-	int i;
+	int i;	
+
+	char *save_ptr, *token;
+	char *argv[65];
+	int argc = 0;
+
+	for (token = strtok_r(file_name, " ", &save_ptr) ; token != NULL ; token = strtok_r(NULL, " ", &save_ptr)) {
+		argv[argc] = token;
+		argc++;
+	}
+
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -416,6 +445,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	argument_stack(argv, argc, if_);
 
 	success = true;
 
@@ -633,7 +663,54 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
-
+	
 	return success;
 }
 #endif /* VM */
+
+/* ================================ todo ============================================= */
+
+void argument_stack (char **argv, int argc, struct intr_frame *_if) {
+	char *stack[65];
+	int i = 0;
+	for (argc -= 1 ; argc >= 0 ; argc--) {
+		_if->rsp -= (strlen(argv[argc]) + 1);
+		memcpy(_if->rsp, argv[argc], strlen(argv[argc])+1);
+		stack[i] = &_if->rsp;
+		i++;
+	}
+	argc += 1;
+
+	if (_if->rsp % 8 != 0) {
+		_if->rsp -= _if->rsp % 8;
+		memset(_if->rsp, 0, _if->rsp % 8);
+	}
+
+	_if->rsp -= 8;
+	memset(_if->rsp, 0, 8);
+
+	for (int idx = 0 ; idx < i ; idx++) {
+		_if->rsp -= 8;
+		memcpy(_if->rsp, stack[idx], 8);
+	}
+
+	_if->R.rsi = _if->rsp;
+	_if->R.rdi = i; 
+
+	_if->rsp -= 8;
+	memset(_if->rsp, 0, 8);
+}
+
+// static void thread_exit (void) {
+// 	ASSERT ( !intr_context() );
+
+// #ifdef USERPROG
+// 	process_exit();
+// #endif
+
+// 	intr_disable();
+// 	list_remove (&thread_current()->elem);
+// 	thread_current()->status = THREAD_DYING;
+// 	schedule();
+// 	NOT_REACHED ();
+// }
