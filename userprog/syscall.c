@@ -7,9 +7,34 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/palloc.h"
+#include "filesys/filesys.h"
+#include "userprog/process.h"
+#include "filesys/file.h"
+#include "lib/kernel/console.h"
+//#include "lib/user/syscall.h"
+#include "devices/input.h"
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+void check_address (void *addr);
+
+void halt (void);
+void exit (int status);
+pid_t fork (const char *thread_name);
+// int exec (const char *file);
+// int wait (pid_t pid);
+bool create (const char *file, unsigned initial_size);
+bool remove (const char *file);
+int open (const char *file);
+int filesize (int fd);
+int read (int fd, void *buffer, unsigned size);
+int write (int fd, const void *buffer, unsigned size);
+void seek (int fd, unsigned position);
+unsigned tell (int fd);
+void close (int fd);
+
 
 /* System call.
  *
@@ -41,6 +66,207 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	// check_address(f->rsp);
+
+	// printf("%d", f->R.rax);
+	switch (f->R.rax) {
+		case SYS_HALT:
+			halt();
+			break;
+
+		case SYS_EXIT:
+			exit(f->R.rdi);	// status
+			break;
+		
+		case SYS_FORK:
+			fork(f->R.rdi);	// thread_name
+			break;
+		
+		// case SYS_EXEC:
+		// 	exec(f->R.rdi); // cmd_line
+		// 	break;
+		
+		// case SYS_WAIT:
+		// 	wait(f->R.rdi);	// pid
+		// 	break;
+		
+		case SYS_CREATE:
+			f->R.rax = create(f->R.rdi, f->R.rsi);	// file, initial_size
+			break;
+		
+		case SYS_REMOVE:
+			f->R.rax = remove(f->R.rdi);
+			break;
+		
+		case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
+			break;
+		
+		case SYS_FILESIZE:
+			f->R.rax = filesize(f->R.rdi);
+			break;
+		
+		case SYS_READ:
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		
+		case SYS_WRITE:
+			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		
+		case SYS_SEEK:
+			seek(f->R.rdi, f->R.rsi);
+			break;
+		
+		case SYS_TELL:
+			f->R.rax = tell(f->R.rdi);
+			break;
+		
+		case SYS_CLOSE:
+			close(f->R.rdi);
+			break;
+
+		default:
+			thread_exit();
+			break;
+	}
+}
+
+void check_address (void *addr) {
+	// 주소 값이 유저 영역 주소 값인지 확인
+	// 1. 널 포인터거나 2. 제대로 매핑이 되지 않은 포인터거나 3. 커널 가상 주소 영역이이면 프로세스 종료
+	if ( addr == NULL || !is_user_vaddr(addr) || !pml4_get_page(thread_current()->pml4, addr) ) {
+	// if ( !pml4_get_page(thread_current()->pml4, addr) ) {
+		exit(-1);
+	}
+}
+
+void halt (void) {
+	power_off();
+}
+
+void exit (int status) {
+	// wait에서 사용할 기존의 status 저장
+	struct thread *curr = thread_current();
+	curr->exit_status = status;
+	thread_exit();
+}
+
+pid_t fork (const char *thread_name) {
+	struct infr_frame *f;
+	process_fork(thread_name, f);
+	return ;
+}
+
+// int exec (const char *file) {
+// 	process_exec();
+// 	return ;
+// }
+
+// int wait (pid_t pid) {
+// 	process_wait(pid);
+// 	return ;
+// }
+
+bool create (const char *file, unsigned initial_size) {
+	check_address(file);
+
+	return filesys_create(file, initial_size);
+}
+
+bool remove (const char *file) {
+	return filesys_remove(file);
+}
+
+int open (const char *file) {
+	check_address(file);
+
+	if ( !file || !filesys_open(file)) {
+		return -1;
+	}
+	
+	struct file *now_file = filesys_open(file);
+
+	int fd = process_add_file(now_file);
+
+	return fd;
+}
+
+int filesize (int fd) {
+	struct thread *now_thread = thread_current();
+
+	if ( fd < 3 || fd >= 64 || !now_thread->fdt[fd] ) {
+		return -1;
+	}
+
+	return file_length(now_thread->fdt[fd]);		
+}
+
+int read (int fd, void *buffer, unsigned size) {
+	check_address(buffer);
+	struct file *f = process_get_file(fd);
+	
+	if (!f || !buffer) {
+		return -1;
+	}
+
+	if ( fd == 0 ) {
+		return input_getc();
+	}
+
+	int byte = file_read(f, buffer, size);
+
+	return byte;
+}
+
+int write (int fd, const void *buffer, unsigned size) {
+	struct file *f = process_get_file(fd);
+	check_address(buffer);
+	
+	if ( fd == 1 ) {
+		// putbuf(buffer, size);
+		printf("%s", buffer);
+		return sizeof(buffer);
+	}
+
+	if (!f || !buffer) {
+		return -1;
+	}
+
+	int byte = file_write(f, buffer, size);
+	return byte;
+}
+
+void seek (int fd, unsigned position) {
+	struct file *f = process_get_file(fd);
+
+	if (!f) {
+		exit(-1);
+	}
+
+	file_seek(f, position);
+}
+
+unsigned tell (int fd) {
+	struct file *f = process_get_file(fd);
+
+	if (!f) {
+		return -1;
+	}
+
+	return file_tell(f);
+}
+
+void close (int fd) {
+	struct file *f = process_get_file(fd);
+	// check_address(f);
+
+	if (!f) {
+		exit(-1);
+	}
+	
+	file_close(f);
+	
+	// twice
+	thread_current()->fdt[fd] = NULL;
 }

@@ -237,6 +237,8 @@ thread_create (const char *name, int priority,
 	// FLAG_IF : 1 << 9 ( 0x200 )
 	t->tf.eflags = FLAG_IF;
 
+
+
 	/* Add to run queue. */
 	thread_unblock (t);
 
@@ -521,6 +523,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
+
+	t->exit_status = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

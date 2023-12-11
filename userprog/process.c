@@ -1,3 +1,4 @@
+#include "userprog/syscall.h"
 #include "userprog/process.h"
 #include <debug.h>
 #include <inttypes.h>
@@ -27,7 +28,6 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 static void start_process (void *file_name_);
-// static void thread_exit (void);
 
 /* General process initializer for initd and other process. */
 static void
@@ -187,18 +187,19 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
-
+	
 	/* And then load the binary */
 	success = load (file_name, &_if);
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
-
+	
 	/* Start switched process. */
 	do_iret (&_if);
+	
 	NOT_REACHED ();
 }
 
@@ -217,7 +218,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (true) {		
+	int i = 99999999;
+	while (i) {
+		i--;		
 	}
 	return -1;
 }
@@ -232,8 +235,9 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 	uint64_t *pd;
 
-	palloc_free_page(curr->pml4);
-	pd = curr->pml4;
+// #ifdef USERPROG
+	printf ("%s: exit(%d)\n", thread_name(), thread_current()->exit_status);
+// #endif
 
 	process_cleanup ();
 }
@@ -390,6 +394,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 		if (file_ofs < 0 || file_ofs > file_length (file))
 			goto done;
+
 		file_seek (file, file_ofs);
 
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
@@ -676,9 +681,10 @@ void argument_stack (char **argv, int argc, struct intr_frame *_if) {
 	for (argc -= 1 ; argc >= 0 ; argc--) {
 		_if->rsp -= (strlen(argv[argc]) + 1);
 		memcpy(_if->rsp, argv[argc], strlen(argv[argc])+1);
-		stack[i] = &_if->rsp;
+		stack[i] = _if->rsp;
 		i++;
 	}
+	
 	argc += 1;
 
 	if (_if->rsp % 8 != 0) {
@@ -691,9 +697,10 @@ void argument_stack (char **argv, int argc, struct intr_frame *_if) {
 
 	for (int idx = 0 ; idx < i ; idx++) {
 		_if->rsp -= 8;
-		memcpy(_if->rsp, stack[idx], 8);
+		memcpy(_if->rsp, &stack[idx], 8);
 	}
 
+	// _if->R.rsi = _if->rsp - i;
 	_if->R.rsi = _if->rsp;
 	_if->R.rdi = i; 
 
@@ -701,16 +708,34 @@ void argument_stack (char **argv, int argc, struct intr_frame *_if) {
 	memset(_if->rsp, 0, 8);
 }
 
-// static void thread_exit (void) {
-// 	ASSERT ( !intr_context() );
+int process_add_file (struct file *f) {
+	struct thread *now_thread = thread_current();
+	int fd = 3;
 
-// #ifdef USERPROG
-// 	process_exit();
-// #endif
+	for ( fd ; fd != 64 ; fd++ ) {
+		if ( !now_thread->fdt[fd] ) {
+			now_thread->fdt[fd] = f;
+			break;
+		}
+	}
+	if ( fd == 64) {
+		return -1;
+	}
+	
+	return fd;
+}
 
-// 	intr_disable();
-// 	list_remove (&thread_current()->elem);
-// 	thread_current()->status = THREAD_DYING;
-// 	schedule();
-// 	NOT_REACHED ();
+struct file *process_get_file (int fd) {
+	struct thread *now_thread = thread_current();
+
+	if ( fd < 3 || fd >= 64 || !now_thread->fdt[fd]) {
+		return NULL;
+	}
+	
+	struct file *f = now_thread->fdt[fd];
+	return f;
+}
+
+// void process_close_file (int fd) {
+// 	file_close(file);
 // }

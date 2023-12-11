@@ -117,6 +117,11 @@ struct thread {
 
 	int nice;
 	int recent_cpu;
+
+	int exit_status;
+
+	struct file *fdt[64];
+	int next_fd;
 };
 
 /* If false (default), use round-robin scheduler.
