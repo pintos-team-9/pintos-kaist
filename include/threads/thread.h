@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "filesys/file.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -113,8 +114,12 @@ struct thread {
 	struct list_elem d_elem;// 도네이션 리스트 elem
 	struct lock *wait_on_lock; // 스레드가 대기하고 있는 lock의 주소 저장
 	int origin_priority; //초기 우선순위 값
+	int exit_status; //exit 상태
+	int next_fd;
+	struct file *fdt[64];
 
-	//mlfqs
+
+	//mlfqs	
 	int nice;
 	int recent_cpu; //최근에 얼마나 cpu 시간을 썼는지
 };

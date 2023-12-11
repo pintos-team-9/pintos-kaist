@@ -7,9 +7,24 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/init.h"
+#include "filesys/file.h"
+#include "userprog/process.h"
+#include "filesys/filesys.h"
+#include "lib/kernel/console.h"
+#include "devices/input.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+void exit(int status);
+void halt(void); 
+int filesize (int fd);
+bool create (const char *file, unsigned initial_size);
+int open (const char *file);
+bool remove (const char *file);
+int read (int fd, void *buffer, unsigned size);
+void check_address(void *addr);
+
 
 /* System call.
  *
@@ -41,6 +56,156 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	//printf("syscall number: %d\n",f->R.rax);
+	switch(f->R.rax){
+		case SYS_HALT:
+			halt();
+			break;
+		case SYS_EXIT:
+			exit(f->R.rdi);
+			break;
+		case SYS_CREATE:
+			f->R.rax = create(f->R.rdi, f->R.rsi);
+			break;
+		case SYS_REMOVE:
+			remove(f->R.rdi);
+			break;
+		case SYS_FILESIZE:
+			f->R.rax = filesize(f->R.rdi);
+			break;
+		case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
+			break;
+		case SYS_READ:
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_WRITE:
+			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+			//printf("%s",f->R.rsi);
+			break;
+		case SYS_SEEK:
+			seek(f->R.rdi, f->R.rsi);
+			break;
+		case SYS_CLOSE:
+			close(f->R.rdi);
+			break;
+
+	}
+
+}
+
+void
+halt (void) {
+	power_off();
+}
+
+void
+exit(int status){
+	struct thread *now_thread = thread_current();
+	now_thread->exit_status = status;
+	thread_exit();
+}
+
+int
+filesize (int fd) {
+	struct thread *now_thread = thread_current();
+	if(fd > 2 && fd < 64 && now_thread->fdt[fd] != NULL){
+		int size = file_length(now_thread->fdt[fd]); 
+		return size;
+	}
+}
+
+bool
+create (const char *file, unsigned initial_size) {
+	check_address(file); //kernel 영역에서만 만들면 안되고 user영역에서 file을 만들어야함!
+	return filesys_create(file, initial_size);
+}
+
+int
+open (const char *file) {
+	check_address(file);
+	if(file == NULL)
+		return -1;
+	int fd;
+	struct file *now_file = filesys_open(file);
+	if(now_file == NULL){
+		return -1;
+	}
+	fd = process_add_file(now_file);
+	return fd;
+}
+
+bool
+remove (const char *file) {
+	return filesys_remove(file);
+}
+
+int
+read (int fd, void *buffer, unsigned size) {
+	struct thread *now_thread = thread_current();
+	check_address(buffer);
+	if(fd == 0){
+		return input_getc();
+	}
+	if(fd < 3 || fd >= 64 || now_thread->fdt[fd] == NULL || !buffer){
+		return -1;
+	}
+	struct file *f = now_thread->fdt[fd];
+	int byte_read = file_read(f, buffer, size);
+	//printf("\n read -------------%d\n", byte_read);
+	return byte_read;
+}
+
+int
+write (int fd, const void *buffer, unsigned size) {
+	int byte_written;
+	check_address(buffer);
+	if(fd == 1){
+		//putbuf(buffer, size);
+		printf("%s", buffer);
+		return size;
+	}
+	struct thread *now_thread = thread_current();
+
+	if(fd <3 || fd>= 64 || now_thread->fdt[fd] ==NULL)
+		return -1;
+	struct file *f = now_thread->fdt[fd];
+	if(f == NULL)
+		return -1;
+
+	byte_written = file_write(f, buffer, size);
+	return byte_written;
+}
+
+void
+seek (int fd, unsigned position) {
+	struct thread *now_thread = thread_current();
+	struct file *f = now_thread->fdt[fd];
+	if(fd <3 || fd>= 64 || now_thread->fdt[fd] == NULL)
+		return -1;
+	file_seek(f, position);
+}
+
+unsigned
+tell (int fd) {
+	struct thread *now_thread = thread_current();
+	struct file *f = now_thread->fdt[fd];
+	if(fd <3 || fd>= 64 || now_thread->fdt[fd] == NULL)
+		return -1;
+	return file_tell(f);
+}
+
+void close (int fd) {
+	struct thread *now_thread = thread_current();
+	if(fd < 3 || fd>= 64 || now_thread->fdt[fd] == NULL)
+		exit(-1);
+	struct file *f = now_thread->fdt[fd];
+	file_close(f);
+	now_thread->fdt[fd] = NULL;
+}
+
+/*-----address check-----*/
+void check_address(void *addr){
+	if(pml4_get_page(thread_current()->pml4, addr) == NULL)
+		exit(-1);
 }

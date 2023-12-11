@@ -178,7 +178,7 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	//hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -217,7 +217,7 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
+	printf ("%s: exit(%d)\n", curr->name, curr->exit_status);
 	process_cleanup ();
 }
 
@@ -440,6 +440,7 @@ done:
 void argument_stack(char **argv, int argc, struct intr_frame *if_){
 	void *address_arr[LOADER_ARGS_LEN / 2 + 1];
 
+	//argv -> stack
 	for(int i=argc-1; i>=0; i--){
 		int arg_len = strlen(argv[i])+1; //i번쨰 길이를 가져옴 \0까지 글자가 하나라도 두개임
 		if_->rsp -= arg_len; //스택포인터 낮춤
@@ -447,9 +448,9 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_){
 		address_arr[i] = (void *)if_->rsp;
 	}
 	
+	//word align
 	int padding = if_->rsp % 8;
-
-	if(padding != 0){ //word align
+	if(padding != 0){
 		if_->rsp -= padding;
 		memset(if_->rsp, 0, padding);
 	}
@@ -457,14 +458,16 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_){
 	if_->rsp -= 8;
 	memset(if_->rsp, 0, 8);
 	
+	//address
 	for(int i=argc-1; i>=0; i--){
 		if_->rsp -= 8;
 		memcpy(if_->rsp, &address_arr[i], 8);
 	}
 
+	//argc, argv 저장
 	if_->R.rsi = if_->rsp;
 	if_->R.rdi = argc;
-	
+	//fake address
 	if_->rsp -= 8;
 	memset(if_->rsp, 0, 8);
 }
@@ -594,6 +597,18 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 
+int process_add_file(struct file *f){
+	struct thread *now_thread = thread_current();
+	int fd= 3;
+	
+	for(int i=fd;i<64; i++){
+		if(now_thread->fdt[i] == NULL){
+			now_thread->fdt[i] = f;
+			return i;
+		}
+	}
+	return -1;
+}
 /* Adds a mapping from user virtual address UPAGE to kernel
  * virtual address KPAGE to the page table.
  * If WRITABLE is true, the user process may modify the page;
