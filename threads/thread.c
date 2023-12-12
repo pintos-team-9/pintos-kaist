@@ -206,6 +206,10 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+	if(t->name != 'idle'){
+		list_push_back(&(thread_current()->child_list), &(t->child_elem));
+	}
+	//printf("\n\n child name : %s\n\n", t->name);
 	tid = t->tid = allocate_tid ();
 
 	/* Call the kernel_thread if it scheduled.
@@ -473,6 +477,22 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	t->nice 	  = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
+
+	t->is_exit = 0;
+	//t->next_fd = 3;
+
+	for(int i=3; i < MAX_FDT; i++){
+		t->fdt[i] = NULL;
+	}
+
+
+	list_init(&t->child_list);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->succ_sema, 0);
+	//struct lock list_lock; //child_list update lock
+	
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

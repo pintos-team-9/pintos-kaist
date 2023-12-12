@@ -3,6 +3,26 @@
     "files.associations": {
         "thread.h": "c",
         "stddef.h": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "syscall.h": "c",
+        "syscall-nr.h": "c",
+        "interrupt.h": "c",
+        "vaddr.h": "c",
+        "stdio.h": "c",
+        "debug.h": "c",
+        "string.h": "c",
+        "file.h": "c",
+        "loader.h": "c",
+        "flags.h": "c",
+        "process.h": "c",
+        "input.h": "c",
+        "filesys.h": "c",
+        "init.h": "c",
+        "mmu.h": "c",
+        "palloc.h": "c",
+        "directory.h": "c",
+        "tss.h": "c",
+        "*.inc": "c",
+        "fixed_point.h": "c"
     }
 }

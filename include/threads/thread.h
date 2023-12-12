@@ -29,6 +29,7 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define MAX_FDT 128
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -118,6 +119,24 @@ struct thread {
 
 	int nice;
 	int recent_cpu;
+
+	int child_create_flag; //자식 프로세스 생성 플래그(실패시 -1)
+	int is_exit; //프로세스 종료 유무
+	//int succ_exit_status; //정상 종료 status
+	
+	struct semaphore wait_sema; //프로세스 wait 세마포어
+	struct semaphore fork_sema; //프로세스 fork 세마포어
+	struct semaphore succ_sema; //프로세스 종료 성공 세마포어
+	
+	struct list child_list; //자식 프로세스 리스트
+	struct list_elem child_elem; //자식 프로세스 리스트 요소
+
+	struct intr_frame *parent_if; //부모프로세스 디스크립터 포인트 필드
+
+	struct file *fdt[MAX_FDT];
+	int next_fd;
+
+	struct file *running_file;
 };
 
 /* If false (default), use round-robin scheduler.
