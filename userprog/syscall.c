@@ -24,6 +24,7 @@ int open (const char *file);
 bool remove (const char *file);
 int read (int fd, void *buffer, unsigned size);
 void check_address(void *addr);
+pid_t fork (const char *thread_name, struct intr_frame *f);
 
 
 /* System call.
@@ -88,6 +89,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 		case SYS_CLOSE:
 			close(f->R.rdi);
+			break;
+		case SYS_FORK:
+			f->R.rax = fork(f->R.rdi, f);
 			break;
 
 	}
@@ -202,6 +206,11 @@ void close (int fd) {
 	struct file *f = now_thread->fdt[fd];
 	file_close(f);
 	now_thread->fdt[fd] = NULL;
+}
+
+pid_t fork (const char *thread_name, struct intr_frame *f){
+	pid_t pid = process_fork(thread_name, f);
+	return pid;
 }
 
 /*-----address check-----*/

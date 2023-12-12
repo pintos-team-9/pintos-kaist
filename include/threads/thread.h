@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 #include "filesys/file.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -117,7 +118,10 @@ struct thread {
 	int exit_status; //exit 상태
 	int next_fd;
 	struct file *fdt[64];
+	struct intr_frame *parent_tf;
 
+	struct semaphore fork_sema;
+	struct semaphore wait_sema;
 
 	//mlfqs	
 	int nice;
