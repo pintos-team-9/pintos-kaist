@@ -171,7 +171,7 @@ exec (const char *cmd_line) {
 	memcpy(fn_copy, cmd_line, dst_len);
 	
 	if (process_exec (fn_copy) < 0){
-		palloc_free_page(fn_copy);
+		//palloc_free_page(fn_copy);
 		return -1;
 	}
 }
@@ -308,7 +308,7 @@ close (int fd) {
 	thread_current()->fdt[fd] = NULL;
 	if (thread_current()->running_file == curr_file)
 		thread_current()->running_file = NULL;
-	//file_close(curr_file);
+	file_close(curr_file);
 }
 /*
 
