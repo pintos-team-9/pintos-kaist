@@ -172,4 +172,3 @@ verify_list_bkwd (struct list *list, int size)
   ASSERT (i == size);
   ASSERT (e == list_rend (list));
 }
-

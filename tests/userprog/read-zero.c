@@ -12,7 +12,6 @@ test_main (void)
   char buf;
 
   CHECK ((handle = open ("sample.txt")) > 1, "open \"sample.txt\"");
-
   buf = 123;
   byte_cnt = read (handle, &buf, 0);
   if (byte_cnt != 0)

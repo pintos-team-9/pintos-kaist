@@ -106,10 +106,6 @@ struct thread {
 	struct supplemental_page_table spt;
 #endif
 
-	/* Owned by thread.c. */
-	struct intr_frame tf;               /* Information for switching */
-	unsigned magic;                     /* Detects stack overflow. */
-
 	int64_t wake_tick;	
 
 	struct lock *wait_on_lock;
@@ -131,12 +127,17 @@ struct thread {
 	struct list child_list; //자식 프로세스 리스트
 	struct list_elem child_elem; //자식 프로세스 리스트 요소
 
-	struct intr_frame *parent_if; //부모프로세스 디스크립터 포인트 필드
 
 	struct file *fdt[MAX_FDT];
 	int next_fd;
 
 	struct file *running_file;
+
+	struct intr_frame parent_if; //부모프로세스 디스크립터 포인트 필드
+
+	/* Owned by thread.c. */
+	struct intr_frame tf;               /* Information for switching */
+	unsigned magic;                     /* Detects stack overflow. */
 };
 
 /* If false (default), use round-robin scheduler.

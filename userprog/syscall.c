@@ -146,6 +146,7 @@ void
 exit (int status) {
 	struct thread *curr = thread_current();
 	curr->is_exit = status;
+	printf ("%s: exit(%d)\n", curr->name, curr->is_exit);
 	for(int i=0; i<MAX_FDT; i++){
 		curr->fdt[i] = NULL;
 	}
@@ -154,7 +155,9 @@ exit (int status) {
 
 pid_t
 fork (const char *thread_name, struct intr_frame *f){
-	return process_fork(thread_name, f);
+	pid_t pid = process_fork(thread_name, f);
+	
+	return pid;
 }
 
 int

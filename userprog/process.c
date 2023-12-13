@@ -78,16 +78,21 @@ initd (void *f_name) {
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+process_fork (const char *name, struct intr_frame *if_ ) {
 	/* Clone current thread to new thread.*/
 	int tid;
+
 	memcpy(&thread_current()->parent_if, if_, sizeof (struct intr_frame));
+
 	
 	tid = thread_create (name, PRI_DEFAULT, __do_fork, thread_current ());
-	if(tid == TID_ERROR)
-		return -1;
+	
+	// if(tid == TID_ERROR)
+	// 	return -1;
 	struct thread *child_thread = get_child_process(tid);
 	sema_down(&child_thread->fork_sema);
+
+	
 	/*
 	if(child_thread->is_exit == TID_ERROR)
 		return -1;
@@ -109,7 +114,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-	if(is_kernel_vaddr(va))
+	if(is_kern_pte(pte))
 		return true;
 	
 	/* 2. Resolve VA from the parent's page map level 4. */
@@ -133,7 +138,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
-		//palloc_free_page(newpage);
+		palloc_free_page(newpage);
 		return false;
 	}
 	return true;
@@ -150,11 +155,12 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
-	parent_if = &parent->parent_if; //부모 복제
+	struct intr_frame *parent_if; //부모 복제
 	bool succ = true;
 	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+
+	memcpy (&if_, &parent->parent_if, sizeof (struct intr_frame));
+
 	//memcpy (&current->tf, parent_if, sizeof (struct intr_frame));
 
 	/* 2. Duplicate PT */
@@ -183,21 +189,21 @@ __do_fork (void *aux) {
 	/*
 	*/
 	for(int i=3; i<MAX_FDT; i++){
-		if(parent->fdt[i]){
+		if(parent->fdt[i] != NULL){
 			struct file *dup_file = file_duplicate(parent->fdt[i]);
 			current->fdt[i] = dup_file;
 		}
 	}
 	
-	sema_up(&current->fork_sema);
 	process_init ();
+	sema_up(&current->fork_sema);
 	/* Finally, switch to the newly created process. */
 	if (succ){
-		
 		if_.R.rax = 0;
 		do_iret (&if_);
 	}
 error:
+	printf("tid : -------------\n");
 	current->is_exit = -1;
 	sema_up(&current->fork_sema);
 	exit(-1);
@@ -310,9 +316,10 @@ int
 process_wait (tid_t child_tid UNUSED) {
 	int result;
 	struct thread *child_thread = get_child_process(child_tid);
+	/*
 	if(!child_thread)
 		return -1;
-
+	*/
 	sema_down(&child_thread->wait_sema);
 	result = child_thread->is_exit;
 	list_remove(&child_thread->child_elem);
@@ -344,8 +351,6 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 	//file_allow_write(curr->running_file);
 	file_close(curr->running_file);
-	printf ("%s: exit(%d)\n", curr->name, curr->is_exit);
-	
 	
 	sema_up(&curr->wait_sema);
 	//sema_down(&curr->succ_sema);
@@ -487,8 +492,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
-	//t->running_file = file;
-	//file_deny_write(file);
+	t->running_file = file;
+	file_deny_write(file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -569,7 +574,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	//file_close (file);
 	return success;
 }
 
