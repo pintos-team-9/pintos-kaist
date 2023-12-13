@@ -113,15 +113,19 @@ struct thread {
 	int64_t wake_tick;
 	struct list donations;//기부 리스트
 	struct list_elem d_elem;// 도네이션 리스트 elem
+	struct list child_list;
+	struct list_elem child_elem;
 	struct lock *wait_on_lock; // 스레드가 대기하고 있는 lock의 주소 저장
 	int origin_priority; //초기 우선순위 값
 	int exit_status; //exit 상태
 	int next_fd;
 	struct file *fdt[64];
-	struct intr_frame *parent_tf;
+	struct intr_frame *parent_if;
 
 	struct semaphore fork_sema;
 	struct semaphore wait_sema;
+	struct semaphore exit_sema;
+	
 
 	//mlfqs	
 	int nice;

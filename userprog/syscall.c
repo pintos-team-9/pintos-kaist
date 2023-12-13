@@ -16,16 +16,21 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
-void exit(int status);
-void halt(void); 
-int filesize (int fd);
-bool create (const char *file, unsigned initial_size);
-int open (const char *file);
-bool remove (const char *file);
-int read (int fd, void *buffer, unsigned size);
+void sys_halt (void) NO_RETURN;
+void sys_exit (int status) NO_RETURN;
+int sys_filesize (int fd);
+bool sys_create (const char *file, unsigned initial_size);
+int sys_open (const char *file);
+bool sys_remove (const char *file);
+int sys_read (int fd, void *buffer, unsigned size);
 void check_address(void *addr);
-pid_t fork (const char *thread_name, struct intr_frame *f);
-
+pid_t sys_fork (const char *thread_name, struct intr_frame *f);
+int sys_wait (pid_t pid);
+void sys_seek (int fd, unsigned position);
+int sys_exec (const char *file);
+int sys_write (int fd, const void *buffer, unsigned size);
+void sys_close (int fd);
+unsigned sys_tell (int fd);
 
 /* System call.
  *
@@ -58,60 +63,101 @@ void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
 	//printf("syscall number: %d\n",f->R.rax);
-	switch(f->R.rax){
-		case SYS_HALT:
-			halt();
-			break;
-		case SYS_EXIT:
-			exit(f->R.rdi);
-			break;
-		case SYS_CREATE:
-			f->R.rax = create(f->R.rdi, f->R.rsi);
-			break;
-		case SYS_REMOVE:
-			remove(f->R.rdi);
-			break;
-		case SYS_FILESIZE:
-			f->R.rax = filesize(f->R.rdi);
-			break;
-		case SYS_OPEN:
-			f->R.rax = open(f->R.rdi);
-			break;
-		case SYS_READ:
-			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
-			break;
-		case SYS_WRITE:
-			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
-			//printf("%s",f->R.rsi);
-			break;
-		case SYS_SEEK:
-			seek(f->R.rdi, f->R.rsi);
-			break;
-		case SYS_CLOSE:
-			close(f->R.rdi);
-			break;
-		case SYS_FORK:
-			f->R.rax = fork(f->R.rdi, f);
-			break;
+	switch (f->R.rax)
+	{
+	case SYS_HALT:
+	 	/* return void */
+		sys_halt ();
+	 	break;
+	case SYS_EXIT:
+	 	/* return void */
+	 	sys_exit (f->R.rdi);
+	 	break;
+	
+	case SYS_FORK:
+	 	/* return pid_t */
+	 	f->R.rax = sys_fork (f->R.rdi, f);
+		break;
 
+	// case SYS_EXEC:
+	//  	/* return int */
+	//  	f->R.rax = sys_exec (f->R.rdi);
+	//  	break;
+
+	case SYS_WAIT:
+	 	/* return int */
+	 	f->R.rax = sys_wait(f->R.rdi);
+	 	break;
+	
+	case SYS_CREATE:
+	 	/* return bool */
+	 	f->R.rax = sys_create(f->R.rdi, f->R.rsi);
+	 	break;
+	
+	case SYS_REMOVE:
+	 	/* return bool */
+	 	f->R.rax = sys_remove(f->R.rdi);
+	 	break;
+
+	case SYS_OPEN:
+	 	/* return int */
+	 	f->R.rax = sys_open(f->R.rdi);
+	 	break;
+	
+	case SYS_FILESIZE:
+	 	/* return int */
+	 	f->R.rax = sys_filesize(f->R.rdi);
+	 	break;
+	
+	case SYS_READ:
+	 	/* return int */
+	 	f->R.rax = sys_read(f->R.rdi, f->R.rsi, f->R.rdx);
+	 	break;
+	
+	case SYS_WRITE:
+	 	/* return int */
+	 	f->R.rax = sys_write(f->R.rdi, f->R.rsi, f->R.rdx);
+	 	break;
+	
+	case SYS_SEEK:
+	 	/* return void */
+	 	sys_seek(f->R.rdi, f->R.rsi);
+	 	break;
+	
+	case SYS_TELL:
+	 	/* return unsigned int */
+	 	f->R.rax = sys_tell(f->R.rdi);
+	 	break;
+
+	case SYS_CLOSE:
+	 	/* return void */
+	 	sys_close(f->R.rdi);
+	 	break;
+	
+	default:
+		thread_exit();
+	 	break;
 	}
-
 }
 
 void
-halt (void) {
+sys_halt (void) {
 	power_off();
 }
 
 void
-exit(int status){
+sys_exit(int status){
 	struct thread *now_thread = thread_current();
 	now_thread->exit_status = status;
+	for(int i=0; i<64; i++){
+		now_thread->fdt[i] = NULL;
+	}
+
+	printf ("%s: exit(%d)\n", now_thread->name, now_thread->exit_status);
 	thread_exit();
 }
 
-int
-filesize (int fd) {
+int sys_filesize (int fd) {
 	struct thread *now_thread = thread_current();
 	if(fd > 2 && fd < 64 && now_thread->fdt[fd] != NULL){
 		int size = file_length(now_thread->fdt[fd]); 
@@ -119,14 +165,12 @@ filesize (int fd) {
 	}
 }
 
-bool
-create (const char *file, unsigned initial_size) {
+bool sys_create (const char *file, unsigned initial_size) {
 	check_address(file); //kernel 영역에서만 만들면 안되고 user영역에서 file을 만들어야함!
 	return filesys_create(file, initial_size);
 }
 
-int
-open (const char *file) {
+int sys_open (const char *file) {
 	check_address(file);
 	if(file == NULL)
 		return -1;
@@ -139,13 +183,11 @@ open (const char *file) {
 	return fd;
 }
 
-bool
-remove (const char *file) {
+bool sys_remove (const char *file) {
 	return filesys_remove(file);
 }
 
-int
-read (int fd, void *buffer, unsigned size) {
+int sys_read (int fd, void *buffer, unsigned size) {
 	struct thread *now_thread = thread_current();
 	check_address(buffer);
 	if(fd == 0){
@@ -160,13 +202,12 @@ read (int fd, void *buffer, unsigned size) {
 	return byte_read;
 }
 
-int
-write (int fd, const void *buffer, unsigned size) {
+int sys_write (int fd, const void *buffer, unsigned size) {
 	int byte_written;
 	check_address(buffer);
 	if(fd == 1){
 		//putbuf(buffer, size);
-		printf("%s", buffer);
+		putbuf(buffer, size);
 		return size;
 	}
 	struct thread *now_thread = thread_current();
@@ -182,16 +223,17 @@ write (int fd, const void *buffer, unsigned size) {
 }
 
 void
-seek (int fd, unsigned position) {
+sys_seek (int fd, unsigned position) {
 	struct thread *now_thread = thread_current();
 	struct file *f = now_thread->fdt[fd];
+	/*
 	if(fd <3 || fd>= 64 || now_thread->fdt[fd] == NULL)
 		return -1;
+	*/
 	file_seek(f, position);
 }
 
-unsigned
-tell (int fd) {
+unsigned sys_tell (int fd) {
 	struct thread *now_thread = thread_current();
 	struct file *f = now_thread->fdt[fd];
 	if(fd <3 || fd>= 64 || now_thread->fdt[fd] == NULL)
@@ -199,22 +241,32 @@ tell (int fd) {
 	return file_tell(f);
 }
 
-void close (int fd) {
+void sys_close (int fd) {
 	struct thread *now_thread = thread_current();
 	if(fd < 3 || fd>= 64 || now_thread->fdt[fd] == NULL)
-		exit(-1);
+		sys_exit(-1);
 	struct file *f = now_thread->fdt[fd];
 	file_close(f);
 	now_thread->fdt[fd] = NULL;
 }
 
-pid_t fork (const char *thread_name, struct intr_frame *f){
+pid_t sys_fork (const char *thread_name, struct intr_frame *f){
 	pid_t pid = process_fork(thread_name, f);
 	return pid;
 }
 
+int sys_wait (pid_t pid) {
+	return process_wait(pid);
+}
+
+/*
+int sys_exec (const char *file){
+
+}
+*/
+
 /*-----address check-----*/
 void check_address(void *addr){
 	if(pml4_get_page(thread_current()->pml4, addr) == NULL)
-		exit(-1);
+		sys_exit(-1);
 }

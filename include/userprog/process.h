@@ -10,5 +10,5 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
 int process_add_file(struct file *f);
-
+struct thread *process_get_child(int child_tid);
 #endif /* userprog/process.h */

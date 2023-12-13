@@ -35,7 +35,7 @@
 static struct list ready_list;
 static struct list sleep_list;
 
-static struct list donations;
+//static struct list donations;
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -207,6 +207,9 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+	if(is_thread(thread_current())){
+		list_push_back(&thread_current()->child_list, &t->child_elem);
+	}
 	tid = t->tid = allocate_tid ();
 
 	/* Call the kernel_thread if it scheduled.
@@ -219,6 +222,8 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+
+
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -460,13 +465,19 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 	list_init(&t->donations);
+	list_init(&t->child_list);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
 	t->origin_priority = priority;
 
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 
-	sema_init(&t->fork_sema, 0);
-	sema_init(&t->wait_sema, 0);
+	//--------파일 디스크립터-------
+	int next_fd = 3;
+	for(int i=3; i<64; i++){
+		t->fdt[i] = NULL;
+	}
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
