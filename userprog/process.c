@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "userprog/syscall.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -87,17 +88,14 @@ process_fork (const char *name, struct intr_frame *if_ ) {
 	
 	tid = thread_create (name, PRI_DEFAULT, __do_fork, thread_current ());
 	
-	// if(tid == TID_ERROR)
-	// 	return -1;
+	if(tid == TID_ERROR)
+		return -1;
 	struct thread *child_thread = get_child_process(tid);
 	sema_down(&child_thread->fork_sema);
 
-	
-	/*
 	if(child_thread->is_exit == TID_ERROR)
 		return -1;
-	*/
-	
+		
 	return tid;
 }
 
@@ -188,7 +186,7 @@ __do_fork (void *aux) {
 	//current->next_fd = parent->next_fd;
 	/*
 	*/
-	for(int i=3; i<MAX_FDT; i++){
+	for(int i=2; i<MAX_FDT; i++){
 		if(parent->fdt[i] != NULL){
 			struct file *dup_file = file_duplicate(parent->fdt[i]);
 			current->fdt[i] = dup_file;
@@ -203,8 +201,7 @@ __do_fork (void *aux) {
 		do_iret (&if_);
 	}
 error:
-	printf("tid : -------------\n");
-	current->is_exit = -1;
+	//current->is_exit = -1;
 	sema_up(&current->fork_sema);
 	exit(-1);
 	//thread_exit ();
@@ -220,7 +217,7 @@ int process_add_file(struct file *file){
 
 	//int now_fd = thread_current()->next_fd;
 
-	for(int i=3; i<MAX_FDT; i++){
+	for(int i=2; i<MAX_FDT; i++){
 		if(thread_current()->fdt[i] == NULL){
 			thread_current()->fdt[i] = file;
 			//thread_current()->next_fd = i;
@@ -316,14 +313,15 @@ int
 process_wait (tid_t child_tid UNUSED) {
 	int result;
 	struct thread *child_thread = get_child_process(child_tid);
-	/*
+	 
 	if(!child_thread)
 		return -1;
-	*/
+	
+	
 	sema_down(&child_thread->wait_sema);
 	result = child_thread->is_exit;
 	list_remove(&child_thread->child_elem);
-	//sema_up(&(child_thread->succ_sema));
+	sema_up(&child_thread->succ_sema);
 	return result;
 
 }
@@ -351,10 +349,21 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 	//file_allow_write(curr->running_file);
 	file_close(curr->running_file);
+	for(int i=0; i<MAX_FDT; i++){
+		close(i);
+	}
+
+	if(!list_empty(&curr->child_list)){
+		while(!list_empty(&curr->child_list)){
+			struct list_elem *child_elem = list_pop_front(&curr->child_list);
+			struct thread *child_thread = list_entry(child_elem, struct thread, child_elem);
+			palloc_free_page(child_thread);
+		}
+	}
 	
-	sema_up(&curr->wait_sema);
-	//sema_down(&curr->succ_sema);
 	process_cleanup ();
+	sema_up(&curr->wait_sema);
+	sema_down(&curr->succ_sema);
 }
 
 /* Free the current process's resources. */

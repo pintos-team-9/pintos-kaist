@@ -45,6 +45,7 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+
 /* Thread destruction requests */
 static struct list destruction_req;
 
@@ -202,6 +203,7 @@ thread_create (const char *name, int priority,
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
+		//palloc_free_page(t);
 		return TID_ERROR;
 
 	/* Initialize thread. */
@@ -481,7 +483,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->is_exit = 0;
 	//t->next_fd = 3;
 
-	for(int i=3; i < MAX_FDT; i++){
+	for(int i=2; i < MAX_FDT; i++){
 		t->fdt[i] = NULL;
 	}
 

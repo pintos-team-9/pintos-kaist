@@ -147,9 +147,7 @@ exit (int status) {
 	struct thread *curr = thread_current();
 	curr->is_exit = status;
 	printf ("%s: exit(%d)\n", curr->name, curr->is_exit);
-	for(int i=0; i<MAX_FDT; i++){
-		curr->fdt[i] = NULL;
-	}
+
 	thread_exit();
 }
 
@@ -165,13 +163,17 @@ exec (const char *cmd_line) {
 	char *fn_copy;
 	int dst_len = strlen(cmd_line)+1;
 	fn_copy = palloc_get_page (PAL_ZERO);
-	if (fn_copy == NULL)
+	if (fn_copy == NULL){
+		//palloc_free_page(fn_copy);
 		exit(-1);
-
+	}
+	
 	memcpy(fn_copy, cmd_line, dst_len);
-
-	if (process_exec (fn_copy) < 0)
-		exit(-1);
+	
+	if (process_exec (fn_copy) < 0){
+		palloc_free_page(fn_copy);
+		return -1;
+	}
 }
 
 int
@@ -195,16 +197,20 @@ int
 open (const char *file) {
 	if (!file)
 		exit(-1);
+	lock_acquire(&filesys_lock);
 	int fd;
 	check_address(file);
 	struct file *curr_file = filesys_open(file);
-	if(!curr_file)	
+	if(!curr_file){
+		lock_release(&filesys_lock);
 		return -1;
+	}	
 
 	fd = process_add_file(curr_file);
 
 	if(fd == -1)
 		file_close(curr_file);
+	lock_release(&filesys_lock);
 	return fd;
 }
 
@@ -220,14 +226,20 @@ filesize (int fd) {
 int
 read (int fd, void *buffer, unsigned size) {
 	check_address(buffer);
-	if(fd == 1)
+	lock_acquire(&filesys_lock);
+	if(fd == 1){
+		lock_release(&filesys_lock);
 		return -1;
+	}
 	char *str_buffer = (char *)buffer;
 	int result = 0;
 	struct file *curr_file = process_get_file(fd);
 	
-	if(!curr_file)
+	if(!curr_file){
+		lock_release(&filesys_lock);
 		return -1;
+	}
+
 	if(fd == 0){
 		while(1){
 			char input_char = input_getc();
@@ -238,34 +250,38 @@ read (int fd, void *buffer, unsigned size) {
 			}
 		}
 	} else {
-		lock_acquire(&filesys_lock);
 		result = file_read(curr_file, buffer, size);
-		lock_release(&filesys_lock);
 	}
 	
+
+	lock_release(&filesys_lock);
 	return result;
 }
 
 int
 write (int fd, const void *buffer, unsigned size) {
 	check_address(buffer);
+	lock_acquire(&filesys_lock);
 
 	int result;
 	struct file *curr_file = process_get_file(fd);
-	if(fd == 0)
+	if(fd == 0){
+		lock_release(&filesys_lock);
 		return -1;
+	}
 
 	if(fd == 1){
 		putbuf(buffer, size);
 		result = size;
 	}else {
-		if(curr_file == NULL)
+		if(curr_file == NULL){
+			lock_release(&filesys_lock);
 			return -1;
-		lock_acquire(&filesys_lock);
+		}
 		result = file_write(curr_file, buffer, size);
-		lock_release(&filesys_lock);
 	}
 	
+	lock_release(&filesys_lock);
 	return result;
 }
 void
@@ -306,6 +322,6 @@ dup2 (int oldfd, int newfd){
 //-----------extra-----------------------------
 
 void check_address(void *addr){
-	if(pml4_get_page(thread_current()->pml4, addr) == NULL)
+	if(pml4e_walk(thread_current()->pml4, addr, false) == NULL)
 		exit(-1);
 }

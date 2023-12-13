@@ -116,7 +116,6 @@ struct thread {
 	int nice;
 	int recent_cpu;
 
-	int child_create_flag; //자식 프로세스 생성 플래그(실패시 -1)
 	int is_exit; //프로세스 종료 유무
 	//int succ_exit_status; //정상 종료 status
 	
