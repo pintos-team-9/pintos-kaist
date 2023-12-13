@@ -106,9 +106,6 @@ struct thread {
 	struct supplemental_page_table spt;
 #endif
 
-	/* Owned by thread.c. */
-	struct intr_frame tf;               /* Information for switching */
-	unsigned magic;                     /* Detects stack overflow. */
 
 	int64_t wake_tick;
 	struct list donations;//기부 리스트
@@ -120,16 +117,19 @@ struct thread {
 	int exit_status; //exit 상태
 	int next_fd;
 	struct file *fdt[64];
-	struct intr_frame *parent_if;
+	struct intr_frame parent_if;
 
 	struct semaphore fork_sema;
 	struct semaphore wait_sema;
 	struct semaphore exit_sema;
 	
-
 	//mlfqs	
 	int nice;
 	int recent_cpu; //최근에 얼마나 cpu 시간을 썼는지
+
+	/* Owned by thread.c. */
+	struct intr_frame tf;               /* Information for switching */
+	unsigned magic;                     /* Detects stack overflow. */
 };
 
 /* If false (default), use round-robin scheduler.

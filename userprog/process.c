@@ -146,11 +146,11 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) aux; //부모
 	struct thread *current = thread_current (); //자식
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if = &parent->parent_if;
+	struct intr_frame *parent_if;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	memcpy (&if_, &parent->parent_if, sizeof (struct intr_frame));
 	if_.R.rax = 0;
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -238,7 +238,7 @@ process_wait (tid_t child_tid) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	/*
-	int cnt = 99999999;
+	maint cnt = 99999999;
 	while(cnt){
 		cnt--;
 	}
@@ -279,6 +279,7 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	printf("\n--------pid----------%d\n", child_thread->tid);
 	sema_up(&child_thread->wait_sema); //2. 자식이 자기 안에 있는 세마를 업함 (부모 깸)
 	process_cleanup (); //3. 자식은 죽음
 }
