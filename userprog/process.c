@@ -87,7 +87,10 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 
 	if(tid == TID_ERROR)
 		return -1;
+	
 	sema_down(&child->fork_sema);
+	if(child->exit_status == TID_ERROR)
+		return -1;
 	return tid;
 }
 
@@ -111,6 +114,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	//	return false;
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
+	//va = pg_round_down(va);
 	if(parent_page == NULL)
 		return false;
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
@@ -152,6 +156,7 @@ __do_fork (void *aux) {
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, &parent->parent_if, sizeof (struct intr_frame));
 	if_.R.rax = 0;
+
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
@@ -198,7 +203,6 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
-
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -237,14 +241,7 @@ process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	/*
-	maint cnt = 99999999;
-	while(cnt){
-		cnt--;
-	}
-	
-	return -1;
-	*/
+
 	struct thread *parent_thread = thread_current();
 	struct thread *child_thread = process_get_child(child_tid);
 	
@@ -255,6 +252,7 @@ process_wait (tid_t child_tid) {
 	//3. 부모가 깨서 일함
 	int status = child_thread->exit_status;
 	list_remove(&child_thread->child_elem); //호적 파버리기
+	sema_up(&child_thread->exit_sema); //정보 다 빼냈어.
 	return status;
 }
 
@@ -274,13 +272,30 @@ struct thread *process_get_child(int child_tid){
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *child_thread = thread_current (); 
+	struct thread *child_thread = thread_current ();
+	struct list_elem *e;
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-	printf("\n--------pid----------%d\n", child_thread->tid);
+
+	//파일 비워주기
+	for(int i=0; i<64; i++){
+		if(!child_thread->fdt[i])
+			file_close(child_thread->fdt[i]);
+
+		child_thread->fdt[i] = NULL;
+	}
+	if(!list_empty(&child_thread->child_list)){
+        while(!list_empty(&child_thread->child_list)){
+            struct list_elem *child_elem = list_pop_front(&child_thread->child_list);
+            struct thread *child_thread = list_entry(child_elem, struct thread, child_elem);
+            palloc_free_page(child_thread);
+        }
+    }
+
 	sema_up(&child_thread->wait_sema); //2. 자식이 자기 안에 있는 세마를 업함 (부모 깸)
+	sema_down(&child_thread->exit_sema); //자식이 부모한테 내 정보 빼내
 	process_cleanup (); //3. 자식은 죽음
 }
 

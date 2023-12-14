@@ -207,6 +207,7 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+	
 	if(is_thread(thread_current())){
 		list_push_back(&thread_current()->child_list, &t->child_elem);
 	}
@@ -468,6 +469,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->child_list);
 	sema_init(&t->fork_sema, 0);
 	sema_init(&t->wait_sema, 0);
+	sema_init(&t->exit_sema, 0);
+	
 	t->origin_priority = priority;
 
 	t->nice = NICE_DEFAULT;

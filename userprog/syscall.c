@@ -13,6 +13,7 @@
 #include "filesys/filesys.h"
 #include "lib/kernel/console.h"
 #include "devices/input.h"
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -29,9 +30,10 @@ int sys_wait (pid_t pid);
 void sys_seek (int fd, unsigned position);
 int sys_exec (const char *file);
 int sys_write (int fd, const void *buffer, unsigned size);
-void sys_close (int fd);
+
 unsigned sys_tell (int fd);
 
+struct lock filesys_lock; //자물쇠
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -47,6 +49,8 @@ unsigned sys_tell (int fd);
 
 void
 syscall_init (void) {
+	lock_init(&filesys_lock); //세마를 1로 설정.
+
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
 			((uint64_t)SEL_KCSEG) << 32);
 	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
@@ -79,10 +83,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	 	f->R.rax = sys_fork (f->R.rdi, f);
 		break;
 
-	// case SYS_EXEC:
-	//  	/* return int */
-	//  	f->R.rax = sys_exec (f->R.rdi);
-	//  	break;
+	case SYS_EXEC:
+	 	/* return int */
+	 	f->R.rax = sys_exec (f->R.rdi);
+	 	break;
 
 	case SYS_WAIT:
 	 	/* return int */
@@ -149,9 +153,7 @@ void
 sys_exit(int status){
 	struct thread *now_thread = thread_current();
 	now_thread->exit_status = status;
-	for(int i=0; i<64; i++){
-		now_thread->fdt[i] = NULL;
-	}
+
 
 	printf ("%s: exit(%d)\n", now_thread->name, now_thread->exit_status);
 	thread_exit();
@@ -163,6 +165,7 @@ int sys_filesize (int fd) {
 		int size = file_length(now_thread->fdt[fd]); 
 		return size;
 	}
+	return -1;
 }
 
 bool sys_create (const char *file, unsigned initial_size) {
@@ -179,6 +182,9 @@ int sys_open (const char *file) {
 	if(now_file == NULL){
 		return -1;
 	}
+	//현재스레드 이름과 file이 동일한지 비교해서(동일하면 0) now_file 쓰기 권한 거부
+	if(strcmp(thread_name(), file) == 0) 
+		file_deny_write(now_file);
 	fd = process_add_file(now_file);
 	return fd;
 }
@@ -188,37 +194,48 @@ bool sys_remove (const char *file) {
 }
 
 int sys_read (int fd, void *buffer, unsigned size) {
+
 	struct thread *now_thread = thread_current();
 	check_address(buffer);
+	lock_acquire(&filesys_lock);
 	if(fd == 0){
+		lock_release(&filesys_lock);
 		return input_getc();
 	}
 	if(fd < 3 || fd >= 64 || now_thread->fdt[fd] == NULL || !buffer){
+		lock_release(&filesys_lock);
 		return -1;
 	}
 	struct file *f = now_thread->fdt[fd];
 	int byte_read = file_read(f, buffer, size);
 	//printf("\n read -------------%d\n", byte_read);
+	lock_release(&filesys_lock);
 	return byte_read;
 }
 
 int sys_write (int fd, const void *buffer, unsigned size) {
 	int byte_written;
 	check_address(buffer);
+	lock_acquire(&filesys_lock);
 	if(fd == 1){
 		//putbuf(buffer, size);
 		putbuf(buffer, size);
+		lock_release(&filesys_lock);
 		return size;
 	}
 	struct thread *now_thread = thread_current();
 
-	if(fd <3 || fd>= 64 || now_thread->fdt[fd] ==NULL)
+	if(fd <3 || fd>= 64 || now_thread->fdt[fd] ==NULL){
+		lock_release(&filesys_lock);
 		return -1;
+	}
 	struct file *f = now_thread->fdt[fd];
-	if(f == NULL)
+	if(f == NULL){
+		lock_release(&filesys_lock);
 		return -1;
-
+	}
 	byte_written = file_write(f, buffer, size);
+	lock_release(&filesys_lock);
 	return byte_written;
 }
 
@@ -246,8 +263,9 @@ void sys_close (int fd) {
 	if(fd < 3 || fd>= 64 || now_thread->fdt[fd] == NULL)
 		sys_exit(-1);
 	struct file *f = now_thread->fdt[fd];
-	file_close(f);
 	now_thread->fdt[fd] = NULL;
+	file_close(f);
+
 }
 
 pid_t sys_fork (const char *thread_name, struct intr_frame *f){
@@ -256,17 +274,29 @@ pid_t sys_fork (const char *thread_name, struct intr_frame *f){
 }
 
 int sys_wait (pid_t pid) {
-	return process_wait(pid);
+	int pid_wait = process_wait(pid);
+	return pid_wait;
 }
 
-/*
+
 int sys_exec (const char *file){
+	check_address(file);
+	int file_size = strlen(file);
+	char *fn_copy = palloc_get_page(PAL_ZERO);
+	if(!fn_copy)
+		return -1;
+	
+	//strlcpy(fn_copy, cmd_line, file_size)
+	memcpy(fn_copy, file, file_size);
 
+	if(process_exec(fn_copy) < 0)
+		sys_exit(-1);
 }
-*/
+
+
 
 /*-----address check-----*/
 void check_address(void *addr){
-	if(pml4_get_page(thread_current()->pml4, addr) == NULL)
+	if(pml4e_walk(thread_current()->pml4, addr, false) == NULL)
 		sys_exit(-1);
 }
