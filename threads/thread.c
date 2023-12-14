@@ -217,9 +217,16 @@ thread_create (const char *name, int priority,
 	if (t == NULL)
 		return TID_ERROR;
 
+
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+	
+	if (is_thread(thread_current())) {
+		list_push_back(&thread_current()->child_list, &t->child_elem);
+	}
+
 	tid = t->tid = allocate_tid ();
+
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -518,6 +525,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 
 	list_init(&t->donations);
+	list_init(&t->child_list);
+
 	t->wait_on_lock = NULL;
 	t->original_priority = priority;
 
@@ -525,6 +534,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 
 	t->exit_status = 0;
+
+	sema_init(&t->sema_fork, 0);
+	sema_init(&t->sema_wait, 0);
+	sema_init(&t->sema_exit, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

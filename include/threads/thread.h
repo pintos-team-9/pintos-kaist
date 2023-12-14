@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -104,10 +105,6 @@ struct thread {
 	struct supplemental_page_table spt;
 #endif
 
-	/* Owned by thread.c. */
-	struct intr_frame tf;               /* Information for switching */
-	unsigned magic;                     /* Detects stack overflow. */
-
 	int64_t wakeup_tick;
 
 	int original_priority;	// 초기 우선순위 값 저장용 필드
@@ -122,6 +119,19 @@ struct thread {
 
 	struct file *fdt[64];
 	int next_fd;
+
+	struct intr_frame parent_if;
+	
+	struct semaphore sema_fork;
+	struct semaphore sema_wait;
+	struct semaphore sema_exit;
+	
+	struct list child_list;
+	struct list_elem child_elem;
+
+	/* Owned by thread.c. */
+	struct intr_frame tf;               /* Information for switching */
+	unsigned magic;                     /* Detects stack overflow. */
 };
 
 /* If false (default), use round-robin scheduler.

@@ -12,9 +12,13 @@
 #include "userprog/process.h"
 #include "filesys/file.h"
 #include "lib/kernel/console.h"
-//#include "lib/user/syscall.h"
+// #include "lib/user/syscall.h"
 #include "devices/input.h"
+#include "threads/synch.h"
+#include "lib/string.h"
 
+typedef int pid_t;
+#define PID_ERROR ((pid_t) -1)
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -22,9 +26,9 @@ void check_address (void *addr);
 
 void halt (void);
 void exit (int status);
-pid_t fork (const char *thread_name);
-// int exec (const char *file);
-// int wait (pid_t pid);
+pid_t fork (const char *thread_name, struct intr_frame *f);
+int exec (const char *cmd_line);
+int wait (pid_t pid);
 bool create (const char *file, unsigned initial_size);
 bool remove (const char *file);
 int open (const char *file);
@@ -34,7 +38,7 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
-
+struct lock filesys_lock;
 
 /* System call.
  *
@@ -51,6 +55,7 @@ void close (int fd);
 
 void
 syscall_init (void) {
+	lock_init(&filesys_lock);
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
 			((uint64_t)SEL_KCSEG) << 32);
 	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
@@ -79,16 +84,16 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 		
 		case SYS_FORK:
-			fork(f->R.rdi);	// thread_name
+			f->R.rax = fork(f->R.rdi, f);	// thread_name, f
 			break;
 		
-		// case SYS_EXEC:
-		// 	exec(f->R.rdi); // cmd_line
-		// 	break;
+		case SYS_EXEC:
+			f->R.rax = exec(f->R.rdi); // cmd_line
+			break;
 		
-		// case SYS_WAIT:
-		// 	wait(f->R.rdi);	// pid
-		// 	break;
+		case SYS_WAIT:
+			f->R.rax = wait(f->R.rdi);	// pid
+			break;
 		
 		case SYS_CREATE:
 			f->R.rax = create(f->R.rdi, f->R.rsi);	// file, initial_size
@@ -149,24 +154,37 @@ void exit (int status) {
 	// wait에서 사용할 기존의 status 저장
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
+	
+	printf ("%s: exit(%d)\n", thread_name(), thread_current()->exit_status);
 	thread_exit();
 }
 
-pid_t fork (const char *thread_name) {
-	struct infr_frame *f;
-	process_fork(thread_name, f);
-	return ;
+pid_t fork (const char *thread_name, struct intr_frame *f) {
+	return process_fork(thread_name, f);
 }
 
-// int exec (const char *file) {
-// 	process_exec();
-// 	return ;
-// }
+int exec (const char *cmd_line) {
+	check_address(cmd_line);
+	int file_size = strlen(cmd_line)+1;
+	char *fn_copy = palloc_get_page(PAL_ZERO);
 
-// int wait (pid_t pid) {
-// 	process_wait(pid);
-// 	return ;
-// }
+	if ( fn_copy == NULL ) {
+		return -1;
+	}
+
+	strlcpy(fn_copy, cmd_line, file_size);	// file_size - 1 개의 문자 복사
+	// memcpy(fn_copy, cmd_line, file_size);
+
+	if ( process_exec(fn_copy) < 0 ) {
+		exit(-1);
+	}
+}
+
+int wait (pid_t pid) {
+	
+	return process_wait(pid);
+	// return pid_wait;
+}
 
 bool create (const char *file, unsigned initial_size) {
 	check_address(file);
@@ -187,6 +205,9 @@ int open (const char *file) {
 	
 	struct file *now_file = filesys_open(file);
 
+	if ( strcmp(thread_name(), file) == 0 )
+		file_deny_write(now_file);
+
 	int fd = process_add_file(now_file);
 
 	return fd;
@@ -204,36 +225,49 @@ int filesize (int fd) {
 
 int read (int fd, void *buffer, unsigned size) {
 	check_address(buffer);
-	struct file *f = process_get_file(fd);
 	
+	lock_acquire(&filesys_lock);
+
+	struct file *f = process_get_file(fd);
+
 	if (!f || !buffer) {
+		lock_release(&filesys_lock);
 		return -1;
 	}
 
 	if ( fd == 0 ) {
+		lock_release(&filesys_lock);
 		return input_getc();
 	}
 
 	int byte = file_read(f, buffer, size);
 
+	lock_release(&filesys_lock);
+
 	return byte;
 }
 
 int write (int fd, const void *buffer, unsigned size) {
+	
 	struct file *f = process_get_file(fd);
 	check_address(buffer);
-	
+	lock_acquire(&filesys_lock);
+
 	if ( fd == 1 ) {
-		// putbuf(buffer, size);
-		printf("%s", buffer);
+		putbuf(buffer, size);
+		// printf("%s", buffer);
+		lock_release(&filesys_lock);
 		return sizeof(buffer);
 	}
 
 	if (!f || !buffer) {
+		lock_release(&filesys_lock);
 		return -1;
 	}
 
 	int byte = file_write(f, buffer, size);
+
+	lock_release(&filesys_lock);
 	return byte;
 }
 
